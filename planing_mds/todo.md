@@ -1,72 +1,142 @@
-UniVision2Board MVP Checkliste
-Phase 1: Projekt-Setup & Infrastruktur
-•Python-Projekt initialisiert (univision2board/)
-•Verzeichnisse erstellt:
-o/src/video_processing
-o/src/object_detection
-o/src/tracking
-o/src/gui
-o/src/utils
-o/tests
-•Git-Repository initialisiert
-•requirements.txt erstellt mit allen benötigten Paketen
-•Pakete installiert und importierbar getestet
-•Logging-System konfiguriert
-•Basis-Teststruktur (pytest) eingerichtet
-•Dummy-Test: Ein Frame aus Video laden und prüfen
-Phase 2: Videoverarbeitung & Homography
-•Video laden mit OpenCV VideoCapture
-•Frames korrekt extrahieren und in numpy speichern
-•GUI-Dialog für manuelle Kalibrierung implementiert (6–8 Punkte: Bullypunkte,
-Torzentrum)
-•Kalibrierungspunkte gespeichert
-•Homography-Matrix mit OpenCV findHomography berechnet
-•Transformation von Videokoordinaten → Taktikboard-Koordinaten getestet
-Phase 3: Objekterkennung
-•YOLOv11-Modell vortrainiert eingebunden
-•Spieler, Torhüter (optional Ball) erkennen
-•Bounding-Boxes und Klassenlabels korrekt zurückgegeben
-•Test mit Dummy-Frames: Spieler werden erkannt
-Phase 4: Spieler-Tracking
-•ByteTrack implementiert
-•Spieler-IDs über Frames konsistent•Laufwege für ausgewählte Spieler erstellt
-•Test: Laufweg korrekt auf Taktikboard transformiert
-Phase 5: Teamzuordnung
-•Automatisches Color-Clustering implementiert (HSV-Farbraum, K-Means k=2)
-•Spieler korrekt in Team A / Team B gruppiert
-•GUI-Korrektur: Trainer kann Spieler-Team wechseln
-•Korrekturen für restlichen Clip übernommen
-Phase 6: Taktikboard GUI
-•GUI-Fenster erstellt (PyQt5/Tkinter)
-•Canvas/Board korrekt angezeigt
-•Spieler visualisiert:
-oEigenes Team: X
-oGegner: O
-oTorhüter: T
-oBall: . (falls erkannt)
-•Laufwege für ausgewählte Spieler angezeigt
-•Passvorschläge (regelbasiert) visualisiert
-•Interaktive Zeichenfunktionen implementiert (J+S Symbole: Pass, Schuss, Laufweg)
-•Trainer kann Spieler/Laufwege auswählen, verschieben, korrigieren
-Phase 7: Datenexport
-•Screenshot / Bild exportieren (PNG/PDF) funktioniert
-•Video mit Overlay exportieren (cv2.VideoWriter) funktioniert
-•Temporäre Anzeige ohne Speicherung korrekt möglich
-Phase 8: Integration & Tests
-•End-to-End-Datenfluss: Video → YOLO → Tracking → Team → GUI → Export
-•Workflow-Test: Clip laden, Spieler erkennen, Laufwege, Passvorschläge, Export
-•Fehlerhandling implementiert:
-•
-oFalsche Teamzuordnung
-oTracking-Ausfälle
-oBall nicht erkannt
-GUI-Warnungen/Korrekturen getestet•
-End-to-End-Integration stabil
-Optional / Stretch Goals
-•Ballerkennung verbessern (falls klein/unscharf)
-•Pose Estimation für Spielerorientierung integrieren
-•Mehrere Spieler gleichzeitig tracken
-•Automatische Szenenerkennung im Video
-•Komplexe Spielzüge vorschlagen (KI-basiert)
-•Statistische Auswertungen: Pässe, Schüsse, Positionen
-•Tablet/Touchboard-Interaktion optimieren
+# UniVision2Board MVP Checkliste
+
+## Phase 1: Projekt-Setup und Infrastruktur
+### Must
+- [x] Python-Projekt initialisiert (`univision2board/`).
+- [x] Verzeichnisse erstellt (`src/video_processing`, `src/object_detection`, `src/tracking`, `src/gui`, `src/utils`, `tests`).
+- [x] `requirements.txt` mit Kernabhaengigkeiten erstellt und installierbar.
+- [x] Logging-Basis konfiguriert.
+- [x] `pytest`-Basisstruktur eingerichtet.
+- [x] Scope dokumentiert: Post-Game-Analyse, kein Echtzeitbetrieb.
+
+### Should
+- [x] Dummy-Test implementiert: Ein Frame wird aus Video geladen und validiert.
+- [x] README mit Startanleitung angelegt.
+
+### Could
+- [x] Optionales Debugging-Setup (z. B. Matplotlib) vorbereiten.
+
+### Definition of Done
+- [x] Umgebung laeuft reproduzierbar.
+- [x] Testlauf (`pytest`) ohne Fehler.
+
+## Phase 2: Videoverarbeitung und Homography
+### Must
+- [ ] Video mit OpenCV laden und Frames extrahieren.
+- [ ] GUI-Dialog fuer manuelle Kalibrierung (6-8 Punkte) umgesetzt.
+- [ ] Kalibrierungspunkte werden gespeichert.
+- [ ] Homography-Matrix berechnet und angewendet.
+
+### Should
+- [ ] Kalibrierung auf mehreren Szenen kurz gegentesten.
+
+### Could
+- [ ] Vorlagenpunkte fuer wiederkehrende Kamerawinkel speichern.
+
+### Definition of Done
+- [ ] Videokoordinaten werden plausibel auf Board-Koordinaten transformiert.
+
+## Phase 3: Objekterkennung
+### Must
+- [ ] YOLOv11 vortrainiert eingebunden.
+- [ ] Spieler und Torhueter werden pro Frame erkannt.
+- [ ] Optionale Ballerkennung integriert.
+- [ ] Bounding-Boxes, Klasse, Confidence werden sauber ausgegeben.
+
+### Should
+- [ ] Dummy-Frame-Test fuer Detection-Ausgabe hinterlegt.
+
+### Could
+- [ ] Confidence-Schwelle pro Klasse konfigurierbar machen.
+
+### Definition of Done
+- [ ] Detection-Output ist stabil und als Input fuer Tracking nutzbar.
+
+## Phase 4: Spieler-Tracking
+### Must
+- [ ] ByteTrack integriert.
+- [ ] Spieler-IDs bleiben ueber Frames konsistent.
+- [ ] Laufwege aus Mittelpunkten pro Bounding-Box erzeugt.
+
+### Should
+- [ ] Trajektorien visuell auf dem Taktikboard kontrollierbar.
+
+### Could
+- [ ] Glattung der Laufwege fuer bessere Lesbarkeit ergaenzen.
+
+### Definition of Done
+- [ ] Laufwege fuer ausgewaehlte Spieler sind korrekt transformiert und darstellbar.
+
+## Phase 5: Teamzuordnung
+### Must
+- [ ] HSV-Farbmerkmale aus Spieler-Bounding-Boxes extrahieren.
+- [ ] K-Means (`k=2`) fuer Team A/B implementieren.
+- [ ] Teamlabels im UI sichtbar machen.
+- [ ] Trainer-Korrektur fuer Fehlzuordnung ermoeglichen.
+
+### Should
+- [ ] Korrekturen fuer den restlichen Clip beibehalten.
+
+### Could
+- [ ] Historische Teamzuordnung fuer spaetere Clips vorladen.
+
+### Definition of Done
+- [ ] Teamzuordnung funktioniert automatisch und ist manuell korrigierbar.
+
+## Phase 6: Taktikboard GUI
+### Must
+- [ ] GUI-Fenster mit Board/Canvas erstellt (PyQt5 oder Tkinter).
+- [ ] Symbole fuer Team, Gegner, Torhueter und Ball dargestellt.
+- [ ] Laufwege fuer ausgewaehlte Spieler visualisiert.
+- [ ] Regelbasierte Passvorschlaege als Pfeile dargestellt.
+- [ ] Interaktive Zeichenfunktionen fuer Pass, Schuss, Laufweg vorhanden.
+
+### Should
+- [ ] Trainer kann Spieler/Laufwege auswaehlen und korrigieren.
+
+### Could
+- [ ] Touch-optimierte Interaktion fuer Tablet verbessern.
+
+### Definition of Done
+- [ ] Board ist bedienbar und taktische Elemente bleiben sichtbar/weiter nutzbar.
+
+## Phase 7: Datenexport
+### Must
+- [ ] Bildexport als PNG/PDF funktioniert.
+- [ ] Videoexport mit Overlay via `cv2.VideoWriter` funktioniert.
+
+### Should
+- [ ] Temporaere Anzeige ohne persistente Speicherung moeglich.
+
+### Could
+- [ ] Export-Presets (Qualitaet/Format) ergaenzen.
+
+### Definition of Done
+- [ ] Exportierte Dateien sind oeffnbar und enthalten alle sichtbaren Overlays.
+
+## Phase 8: Integration und Tests
+### Must
+- [ ] End-to-End-Datenfluss verbunden (`Video -> YOLO -> Tracking -> Team -> GUI -> Export`).
+- [ ] Workflow-Test aus Trainersicht durchgefuehrt.
+- [ ] Fehlerfaelle abgefangen (falsche Teamzuordnung, Tracking-Ausfall, Ball nicht erkannt).
+
+### Should
+- [ ] GUI zeigt klare Warnungen und Korrekturmoeglichkeiten.
+- [ ] Datenschutz-Hinweis fuer potenziell personenbezogene Videodaten im Projektablauf dokumentieren.
+
+### Could
+- [ ] Kurzes Testprotokoll pro Demo-Clip dokumentieren.
+
+### Definition of Done
+- [ ] End-to-End-Integration laeuft stabil ohne manuelle Codeeingriffe waehrend des Ablaufs.
+
+## Optional / Stretch Goals
+### Should
+- [ ] Ballerkennung verbessern (klein/unscharf).
+- [ ] Automatische Szenenerkennung integrieren.
+- [ ] Statistische Auswertungen (Paesse, Schuesse, Positionen) ergaenzen.
+
+### Could
+- [ ] Pose Estimation fuer Spielerorientierung integrieren.
+- [ ] Komplexere KI-basierte Spielzuege vorschlagen.
+- [ ] Stable-Baselines3 als optionales Modul fuer lernbasierte Spielzuglogik evaluieren.
