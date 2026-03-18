@@ -22,19 +22,19 @@
 
 ## Phase 2: Videoverarbeitung und Homography
 ### Must
-- [ ] Video mit OpenCV laden und Frames extrahieren.
-- [ ] GUI-Dialog fuer manuelle Kalibrierung (6-8 Punkte) umgesetzt.
-- [ ] Kalibrierungspunkte werden gespeichert.
-- [ ] Homography-Matrix berechnet und angewendet.
+- [x] Video mit OpenCV laden und Frames extrahieren.
+- [x] GUI-Dialog fuer manuelle Kalibrierung (6-8 Punkte) umgesetzt.
+- [x] Kalibrierungspunkte werden gespeichert.
+- [x] Homography-Matrix berechnet und angewendet.
 
 ### Should
-- [ ] Kalibrierung auf mehreren Szenen kurz gegentesten.
+- [x] Kalibrierung auf mehreren Szenen kurz gegentesten.
 
 ### Could
-- [ ] Vorlagenpunkte fuer wiederkehrende Kamerawinkel speichern.
+- [x] Vorlagenpunkte fuer wiederkehrende Kamerawinkel speichern.
 
 ### Definition of Done
-- [ ] Videokoordinaten werden plausibel auf Board-Koordinaten transformiert.
+- [x] Videokoordinaten werden plausibel auf Board-Koordinaten transformiert.
 
 ## Phase 3: Objekterkennung
 ### Must
