@@ -1,0 +1,25 @@
+# YOLO-Format Datensatz-Konfiguration für UniVision2Board Fine-Tuning
+#
+# Klassen müssen übereinstimmen mit DetectionResult.CLASS_*:
+#   0 = player       (Feldspieler)
+#   1 = goalkeeper   (Torwart)
+#   2 = ball         (Floorball)
+#
+# Verzeichnisstruktur (wird von prepare_dataset.py oder Roboflow-Download erzeugt):
+#   finetune/dataset/
+#     images/
+#       train/   *.jpg / *.png
+#       val/     *.jpg / *.png
+#     labels/
+#       train/   *.txt  (YOLO-Format: class cx cy w h, normiert 0–1)
+#       val/     *.txt
+
+path: ./finetune/dataset    # Wurzelverzeichnis (relativ zum Projektroot)
+train: images/train
+val:   images/val
+
+nc: 3
+names:
+  0: player
+  1: goalkeeper
+  2: ball

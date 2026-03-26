@@ -38,81 +38,81 @@
 
 ## Phase 3: Objekterkennung
 ### Must
-- [ ] YOLOv11 vortrainiert eingebunden.
-- [ ] Spieler und Torhueter werden pro Frame erkannt.
-- [ ] Optionale Ballerkennung integriert.
-- [ ] Bounding-Boxes, Klasse, Confidence werden sauber ausgegeben.
+- [x] YOLOv11 vortrainiert eingebunden.
+- [x] Spieler und Torhueter werden pro Frame erkannt.
+- [x] Optionale Ballerkennung integriert.
+- [x] Bounding-Boxes, Klasse, Confidence werden sauber ausgegeben.
 
 ### Should
-- [ ] Dummy-Frame-Test fuer Detection-Ausgabe hinterlegt.
+- [x] Dummy-Frame-Test fuer Detection-Ausgabe hinterlegt.
 
 ### Could
-- [ ] Confidence-Schwelle pro Klasse konfigurierbar machen.
+- [x] Confidence-Schwelle pro Klasse konfigurierbar machen.
 
 ### Definition of Done
-- [ ] Detection-Output ist stabil und als Input fuer Tracking nutzbar.
+- [x] Detection-Output ist stabil und als Input fuer Tracking nutzbar.
 
 ## Phase 4: Spieler-Tracking
 ### Must
-- [ ] ByteTrack integriert.
-- [ ] Spieler-IDs bleiben ueber Frames konsistent.
-- [ ] Laufwege aus Mittelpunkten pro Bounding-Box erzeugt.
+- [x] ByteTrack integriert.
+- [x] Spieler-IDs bleiben ueber Frames konsistent.
+- [x] Laufwege aus Mittelpunkten pro Bounding-Box erzeugt.
 
 ### Should
-- [ ] Trajektorien visuell auf dem Taktikboard kontrollierbar.
+- [x] Trajektorien visuell auf dem Taktikboard kontrollierbar.
 
 ### Could
-- [ ] Glattung der Laufwege fuer bessere Lesbarkeit ergaenzen.
+- [x] Glattung der Laufwege fuer bessere Lesbarkeit ergaenzen.
 
 ### Definition of Done
-- [ ] Laufwege fuer ausgewaehlte Spieler sind korrekt transformiert und darstellbar.
+- [x] Laufwege fuer ausgewaehlte Spieler sind korrekt transformiert und darstellbar.
 
 ## Phase 5: Teamzuordnung
 ### Must
-- [ ] HSV-Farbmerkmale aus Spieler-Bounding-Boxes extrahieren.
-- [ ] K-Means (`k=2`) fuer Team A/B implementieren.
-- [ ] Teamlabels im UI sichtbar machen.
-- [ ] Trainer-Korrektur fuer Fehlzuordnung ermoeglichen.
+- [x] HSV-Farbmerkmale aus Spieler-Bounding-Boxes extrahieren.
+- [x] K-Means (`k=2`) fuer Team A/B implementieren.
+- [x] Teamlabels im UI sichtbar machen.
+- [x] Trainer-Korrektur fuer Fehlzuordnung ermoeglichen.
 
 ### Should
-- [ ] Korrekturen fuer den restlichen Clip beibehalten.
+- [x] Korrekturen fuer den restlichen Clip beibehalten.
 
 ### Could
-- [ ] Historische Teamzuordnung fuer spaetere Clips vorladen.
+- [x] Historische Teamzuordnung fuer spaetere Clips vorladen.
 
 ### Definition of Done
-- [ ] Teamzuordnung funktioniert automatisch und ist manuell korrigierbar.
+- [x] Teamzuordnung funktioniert automatisch und ist manuell korrigierbar.
 
 ## Phase 6: Taktikboard GUI
 ### Must
-- [ ] GUI-Fenster mit Board/Canvas erstellt (PyQt5 oder Tkinter).
-- [ ] Symbole fuer Team, Gegner, Torhueter und Ball dargestellt.
-- [ ] Laufwege fuer ausgewaehlte Spieler visualisiert.
-- [ ] Regelbasierte Passvorschlaege als Pfeile dargestellt.
-- [ ] Interaktive Zeichenfunktionen fuer Pass, Schuss, Laufweg vorhanden.
+- [x] GUI-Fenster mit Board/Canvas erstellt (Tkinter) Board wurde von mir im Ordner Taktikboard zur verfügung gestellt.
+- [x] Symbole fuer Team, Gegner, Torhueter und Ball dargestellt.
+- [x] Laufwege fuer ausgewaehlte Spieler visualisiert.
+- [x] Regelbasierte Passvorschlaege als Pfeile dargestellt.
+- [x] Interaktive Zeichenfunktionen fuer Pass, Schuss, Laufweg vorhanden.
 
 ### Should
-- [ ] Trainer kann Spieler/Laufwege auswaehlen und korrigieren.
+- [x] Trainer kann Spieler/Laufwege auswaehlen und korrigieren.
 
 ### Could
 - [ ] Touch-optimierte Interaktion fuer Tablet verbessern.
 
 ### Definition of Done
-- [ ] Board ist bedienbar und taktische Elemente bleiben sichtbar/weiter nutzbar.
+- [x] Board ist bedienbar und taktische Elemente bleiben sichtbar/weiter nutzbar.
 
 ## Phase 7: Datenexport
 ### Must
-- [ ] Bildexport als PNG/PDF funktioniert.
-- [ ] Videoexport mit Overlay via `cv2.VideoWriter` funktioniert.
+- [x] Bildexport als PNG/PDF funktioniert.
+- [x] Videoexport mit Overlay via `cv2.VideoWriter` funktioniert.
 
 ### Should
-- [ ] Temporaere Anzeige ohne persistente Speicherung moeglich.
+- [x] Temporaere Anzeige ohne persistente Speicherung moeglich.
 
 ### Could
-- [ ] Export-Presets (Qualitaet/Format) ergaenzen.
+- [x] Export-Presets (Qualitaet/Format) ergaenzen.
 
 ### Definition of Done
-- [ ] Exportierte Dateien sind oeffnbar und enthalten alle sichtbaren Overlays.
+- [x] Exportierte Dateien sind oeffnbar und enthalten alle sichtbaren Overlays.
 
 ## Phase 8: Integration und Tests
 ### Must
@@ -123,6 +123,7 @@
 ### Should
 - [ ] GUI zeigt klare Warnungen und Korrekturmoeglichkeiten.
 - [ ] Datenschutz-Hinweis fuer potenziell personenbezogene Videodaten im Projektablauf dokumentieren.
+- [ ] End-to-End-Validierung mit feinjustiertem Modell gegen Baseline dokumentieren (Qualitaet + Laufzeit).
 
 ### Could
 - [ ] Kurzes Testprotokoll pro Demo-Clip dokumentieren.

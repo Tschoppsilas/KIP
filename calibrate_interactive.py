@@ -12,11 +12,8 @@ Aufruf:
 
 from __future__ import annotations
 
-import json
 import os
 import sys
-import time
-import uuid
 from pathlib import Path
 
 # Qt5 auf XCB (X11/XWayland) zwingen.
@@ -37,43 +34,6 @@ from video_processing.homography import compute_homography, transform_points
 from video_processing.calibration import save_calibration
 
 VIDEO = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("Videos/Muenchenstein_1.mp4")
-DEBUG_LOG_PATH = Path("/home/admin/KIP/.cursor/debug-4e2d6a.log")
-DEBUG_SESSION_ID = "4e2d6a"
-DEBUG_RUN_ID = f"run_{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}"
-
-
-def _debug_log(hypothesis_id: str, location: str, message: str, data: dict | None = None) -> None:
-    payload = {
-        "sessionId": DEBUG_SESSION_ID,
-        "runId": DEBUG_RUN_ID,
-        "hypothesisId": hypothesis_id,
-        "location": location,
-        "message": message,
-        "data": data or {},
-        "timestamp": int(time.time() * 1000),
-    }
-    try:
-        with DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=True) + "\n")
-    except Exception:
-        # Debug logging must never break calibration flow.
-        pass
-
-
-# region agent log
-_debug_log(
-    "H1",
-    "calibrate_interactive.py:start",
-    "script_start_env",
-    {
-        "argv_len": len(sys.argv),
-        "video_path": str(VIDEO),
-        "display": os.environ.get("DISPLAY", ""),
-        "wayland_display": os.environ.get("WAYLAND_DISPLAY", ""),
-        "qt_qpa_platform": os.environ.get("QT_QPA_PLATFORM", ""),
-    },
-)
-# endregion
 
 # Unihockey-Feldpunkte in Reihenfolge (m)
 FIELD_NAMES = [
@@ -107,20 +67,6 @@ print(f"\nLade Video: {VIDEO}")
 info  = get_video_info(VIDEO)
 frame = read_first_frame(VIDEO)
 print(f"Aufloesung: {info.width}x{info.height} | {info.fps} fps | {info.frame_count} Frames")
-# region agent log
-_debug_log(
-    "H2",
-    "calibrate_interactive.py:video_loaded",
-    "video_loaded_first_frame_ok",
-    {
-        "width": info.width,
-        "height": info.height,
-        "fps": info.fps,
-        "frame_count": info.frame_count,
-        "frame_shape": list(frame.shape),
-    },
-)
-# endregion
 
 # Fuer Display auf max. 1440 px Breite skalieren
 MAX_W = 1440
@@ -165,25 +111,9 @@ def _draw(img: np.ndarray) -> np.ndarray:
 def _on_mouse(event, x, y, flags, param):
     if event == cv2.EVENT_LBUTTONDOWN and len(clicked) < N_POINTS:
         clicked.append((x, y))
-        # region agent log
-        _debug_log(
-            "H4",
-            "calibrate_interactive.py:on_mouse",
-            "mouse_click_registered",
-            {"x": x, "y": y, "clicked_count": len(clicked)},
-        )
-        # endregion
         print(f"  Punkt {len(clicked)}: ({x}, {y})  →  {FIELD_NAMES[len(clicked)-1]}")
 
 WINDOW = "UniVision2Board-Calibration (Enter=OK | R=Reset | ESC=Abort)"
-# region agent log
-_debug_log(
-    "H6",
-    "calibrate_interactive.py:window_init",
-    "window_title_selected",
-    {"window_title": WINDOW, "is_ascii": WINDOW.isascii()},
-)
-# endregion
 try:
     cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
     cv2.resizeWindow(WINDOW, disp_w, disp_h)
@@ -193,61 +123,21 @@ try:
         cv2.imshow(WINDOW, _draw(display))
         cv2.waitKey(1)  # Event-Pump, damit Qt das Fenster wirklich initialisiert
         visible = float(cv2.getWindowProperty(WINDOW, cv2.WND_PROP_VISIBLE))
-        # region agent log
-        _debug_log(
-            "H3",
-            "calibrate_interactive.py:window_init",
-            "window_probe",
-            {"attempt": attempt, "visible": visible},
-        )
-        # endregion
         if visible < 1.0:
             continue
         try:
             cv2.setMouseCallback(WINDOW, _on_mouse)
             callback_set = True
-            # region agent log
-            _debug_log(
-                "H3",
-                "calibrate_interactive.py:window_init",
-                "mouse_callback_set",
-                {"attempt": attempt, "window": WINDOW, "disp_w": disp_w, "disp_h": disp_h},
-            )
-            # endregion
             break
-        except cv2.error as callback_exc:
-            # region agent log
-            _debug_log(
-                "H3",
-                "calibrate_interactive.py:window_init",
-                "mouse_callback_failed_attempt",
-                {"attempt": attempt, "error": str(callback_exc)},
-            )
-            # endregion
+        except cv2.error:
+            pass
 
     if not callback_set:
         raise RuntimeError(
             "Kalibrierungsfenster konnte nicht stabil initialisiert werden "
             "(OpenCV Mouse-Callback). Bitte pruefe Display/Wayland-Konfiguration."
         )
-
-    # region agent log
-    _debug_log(
-        "H3",
-        "calibrate_interactive.py:window_init",
-        "window_initialized",
-        {"window": WINDOW, "disp_w": disp_w, "disp_h": disp_h},
-    )
-    # endregion
-except cv2.error as exc:
-    # region agent log
-    _debug_log(
-        "H3",
-        "calibrate_interactive.py:window_init",
-        "window_init_failed",
-        {"error": str(exc)},
-    )
-    # endregion
+except cv2.error:
     raise
 
 print(f"\nFenster geoeffnet – klicke {N_POINTS} Punkte in dieser Reihenfolge:")
@@ -259,15 +149,6 @@ result_pts = None
 while True:
     cv2.imshow(WINDOW, _draw(display))
     key = cv2.waitKey(20) & 0xFF
-    if key not in (255,):
-        # region agent log
-        _debug_log(
-            "H5",
-            "calibrate_interactive.py:event_loop",
-            "key_event_detected",
-            {"key": int(key), "clicked_count": len(clicked)},
-        )
-        # endregion
     if key == 27:                              # ESC
         print("Abgebrochen.")
         break
@@ -291,14 +172,6 @@ dst_m   = list(FIELD_COORDS[:n])
 
 H = compute_homography(src_px, dst_m)
 print(f"\nHomography-Matrix:\n{H}\n")
-# region agent log
-_debug_log(
-    "H5",
-    "calibrate_interactive.py:homography",
-    "homography_computed",
-    {"points_used": n, "matrix_shape": list(H.shape)},
-)
-# endregion
 
 # Test: Spielfeldmitte
 from video_processing.homography import transform_point
