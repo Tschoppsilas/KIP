@@ -1,5 +1,8 @@
 *.mp4
 *.png
+
+# Roboflow-Exports (ZIPs >100MB sind auf GitHub nicht erlaubt)
+finetune/*.zip
 *.pdf
 *.docx
 .venv/

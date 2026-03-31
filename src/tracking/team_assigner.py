@@ -74,35 +74,58 @@ class TeamAssigner:
     """
 
     def __init__(self) -> None:
-        self._centers: np.ndarray | None = None   # (2, 3) cluster centres
-        self._overrides: dict[int, int] = {}       # track_id → TEAM_A/B
+        self._centers: np.ndarray | None = None
+        self._overrides: dict[int, int] = {}
         self._fitted: bool = False
+        self._n_clusters: int = 3
+        self._ref_cluster: int = -1
+        self._cluster_to_team: dict[int, int] = {0: TEAM_A, 1: TEAM_B}
 
     # ------------------------------------------------------------------
     # Clustering
     # ------------------------------------------------------------------
 
-    def fit(self, features: list[np.ndarray]) -> None:
-        """Führt K-Means (k=2) auf den gegebenen HSV-Merkmalsvektoren durch.
+    def fit(self, features: list[np.ndarray], n_clusters: int = 3) -> None:
+        """Führt K-Means auf den gegebenen HSV-Merkmalsvektoren durch.
+
+        Mit n_clusters=3 wird ein dritter Cluster für Schiedsrichter/Betreuer
+        erkannt. Der Cluster mit dem niedrigsten V-Wert (dunkelste Farbe) wird
+        als Schiedsrichter-Cluster markiert und von predict() als TEAM_UNKNOWN
+        zurückgegeben.
 
         Args:
-            features: Liste von HSV-Merkmalsvektoren (je Shape (3,)).
-                      Mindestens 2 Einträge erforderlich.
-
-        Raises:
-            ValueError: Falls ``features`` weniger als 2 Einträge enthält.
+            features:   Liste von HSV-Merkmalsvektoren (je Shape (3,)).
+            n_clusters: Anzahl Cluster (2 = nur Teams, 3 = Teams + Schiri).
         """
-        if len(features) < 2:
-            raise ValueError("Mindestens 2 Feature-Vektoren für K-Means benötigt.")
+        if len(features) < n_clusters:
+            raise ValueError(f"Mindestens {n_clusters} Feature-Vektoren benötigt.")
 
         data = np.stack(features, axis=0).astype(np.float32)
-        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.2)
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 200, 0.1)
         _, labels, centers = cv2.kmeans(
-            data, 2, None, criteria, attempts=10, flags=cv2.KMEANS_PP_CENTERS
+            data, n_clusters, None, criteria, attempts=15, flags=cv2.KMEANS_PP_CENTERS
         )
-        self._centers = centers          # (2, 3)
+        self._centers = centers      # (n_clusters, 3)
+        self._n_clusters = n_clusters
+
+        # Schiri-Cluster: niedrigster V-Wert (dunkelste Trikotfarbe)
+        if n_clusters == 3:
+            self._ref_cluster = int(np.argmin(centers[:, 2]))  # V = Index 2
+        else:
+            self._ref_cluster = -1
+
+        # Team-Cluster-Mapping: unter den nicht-Schiri-Clustern → TEAM_A/B
+        team_clusters = [i for i in range(n_clusters) if i != self._ref_cluster]
+        # Cluster mit höherem Hue → TEAM_B (Blau), niedrigerer → TEAM_A (Rot/Orange)
+        team_clusters.sort(key=lambda i: centers[i, 0])
+        self._cluster_to_team = {team_clusters[0]: TEAM_A, team_clusters[1]: TEAM_B}
+        if self._ref_cluster >= 0:
+            self._cluster_to_team[self._ref_cluster] = TEAM_UNKNOWN
+
         self._fitted = True
-        logger.debug("K-Means fertig. Cluster-Zentren: %s", centers)
+        logger.info("K-Means fertig. Cluster-Zentren:\n%s", centers)
+        logger.info("Cluster→Team Mapping: %s | Schiri-Cluster: %s",
+                    self._cluster_to_team, self._ref_cluster)
 
     def predict(self, feature: np.ndarray) -> int:
         """Sagt das Team für einen einzelnen HSV-Feature-Vektor vorher.
@@ -120,7 +143,8 @@ class TeamAssigner:
             raise RuntimeError("fit() muss vor predict() aufgerufen werden.")
 
         dists = np.linalg.norm(self._centers - feature.astype(np.float32), axis=1)
-        return int(np.argmin(dists))
+        cluster = int(np.argmin(dists))
+        return self._cluster_to_team.get(cluster, TEAM_UNKNOWN)
 
     def get_team(self, track_id: int, feature: np.ndarray) -> int:
         """Gibt das Team für einen Spieler zurück.

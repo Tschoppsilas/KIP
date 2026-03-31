@@ -1,0 +1,32 @@
+nohup: ignoring input
+2026-03-28 23:12:05,178 | INFO | Kalibrierung geladen: calibration_mittelland_4.json (6 Punkte)
+2026-03-28 23:12:05,181 | INFO | Lade YOLO-Modell: finetune/runs/train/weights/best.pt (device=cpu)
+2026-03-28 23:12:05,214 | INFO | Fine-Tuned Modell erkannt – Domain-Klassen direkt gemappt: {0: 'player', 1: 'goalkeeper', 2: 'ball'}
+2026-03-28 23:12:05,215 | INFO | Modell geladen.
+2026-03-28 23:12:05,227 | INFO | Video: Videos/Trainingsdaten/Mittelland_4.mp4 | 1920x1080 | 30.0 fps | 1972/1972 Frames werden verarbeitet
+2026-03-28 23:12:05,234 | INFO | Ausgabe: output_combined_mittelland4.mp4 | 2080x720
+2026-03-28 23:12:05,234 | INFO | Sammle Farbmerkmale für Teamzuordnung (erste 30 Frames) …
+2026-03-28 23:12:06,774 | INFO | K-Means trainiert auf 418 Feature-Vektoren.
+2026-03-28 23:12:06,774 | INFO | Verarbeite 1972 Frames …
+2026-03-28 23:12:06,846 | INFO |   … Frame 1/1972 | Spieler: 12
+2026-03-28 23:12:13,594 | INFO |   … Frame 101/1972 | Spieler: 10
+2026-03-28 23:12:20,599 | INFO |   … Frame 201/1972 | Spieler: 12
+2026-03-28 23:12:28,275 | INFO |   … Frame 301/1972 | Spieler: 12
+2026-03-28 23:12:35,501 | INFO |   … Frame 401/1972 | Spieler: 13
+2026-03-28 23:12:43,274 | INFO |   … Frame 501/1972 | Spieler: 12
+2026-03-28 23:12:50,119 | INFO |   … Frame 601/1972 | Spieler: 12
+2026-03-28 23:12:57,208 | INFO |   … Frame 701/1972 | Spieler: 10
+2026-03-28 23:13:06,913 | INFO |   … Frame 801/1972 | Spieler: 10
+2026-03-28 23:13:17,515 | INFO |   … Frame 901/1972 | Spieler: 11
+2026-03-28 23:13:23,924 | INFO |   … Frame 1001/1972 | Spieler: 9
+2026-03-28 23:13:30,370 | INFO |   … Frame 1101/1972 | Spieler: 9
+2026-03-28 23:13:37,406 | INFO |   … Frame 1201/1972 | Spieler: 12
+2026-03-28 23:13:44,039 | INFO |   … Frame 1301/1972 | Spieler: 11
+2026-03-28 23:13:50,657 | INFO |   … Frame 1401/1972 | Spieler: 12
+2026-03-28 23:13:58,340 | INFO |   … Frame 1501/1972 | Spieler: 10
+2026-03-28 23:14:05,965 | INFO |   … Frame 1601/1972 | Spieler: 12
+2026-03-28 23:14:13,209 | INFO |   … Frame 1701/1972 | Spieler: 13
+2026-03-28 23:14:20,618 | INFO |   … Frame 1801/1972 | Spieler: 11
+2026-03-28 23:14:26,730 | INFO |   … Frame 1901/1972 | Spieler: 10
+2026-03-28 23:14:31,441 | INFO | Fertig! Ausgabe: /home/admin/KIP/output_combined_mittelland4.mp4
+2026-03-28 23:14:31,442 | INFO | Öffnen mit:  xdg-open output_combined_mittelland4.mp4

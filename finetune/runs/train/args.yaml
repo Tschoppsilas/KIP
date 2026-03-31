@@ -1,11 +1,11 @@
 task: detect
 mode: train
-model: yolo11n.pt
+model: finetune/runs/train/weights/best.pt
 data: /home/admin/KIP/finetune/data.yaml
-epochs: 30
+epochs: 120
 time: null
-patience: 10
-batch: 8
+patience: 30
+batch: 4
 imgsz: 640
 save: true
 save_period: -1

@@ -78,7 +78,7 @@ class Detector:
         self._model = YOLO(self._model_path)
 
         # Detect whether the model already uses domain class names directly.
-        _domain_names = {"player", "goalkeeper", "ball"}
+        _domain_names = {"player", "goalkeeper", "ball", "referee"}
         model_names = set(self._model.names.values())
         self._uses_domain_classes: bool = bool(model_names & _domain_names)
         if self._uses_domain_classes:

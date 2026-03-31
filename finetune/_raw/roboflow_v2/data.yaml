@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 4
+names: ['Schiri', 'ball', 'goalkeeper', 'player']
+
+roboflow:
+  workspace: silass-workspace-lcjm6
+  project: silass-workspace-lcjm6
+  version: dataset
+  license: Private
+  url: https://app.roboflow.com/silass-workspace-lcjm6/silass-workspace-lcjm6/dataset

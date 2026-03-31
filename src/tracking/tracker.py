@@ -27,8 +27,8 @@ class PlayerTracker:
     def __init__(
         self,
         track_activation_threshold: float = 0.25,
-        lost_track_buffer: int = 30,
-        minimum_matching_threshold: float = 0.8,
+        lost_track_buffer: int = 90,
+        minimum_matching_threshold: float = 0.7,
         frame_rate: int = 30,
     ) -> None:
         self._tracker = sv.ByteTrack(

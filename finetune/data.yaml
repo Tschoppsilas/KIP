@@ -18,8 +18,9 @@ path: ./finetune/dataset    # Wurzelverzeichnis (relativ zum Projektroot)
 train: images/train
 val:   images/val
 
-nc: 3
+nc: 4
 names:
   0: player
   1: goalkeeper
   2: ball
+  3: referee
