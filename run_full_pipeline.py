@@ -52,8 +52,8 @@ MODEL      = "finetune/runs/train/weights/best.pt"
 BOARD_IMG  = "Taktikboard/Taktikboard.png"
 
 # Konfidenz-Schwellen
-CONF_PLAYER     = 0.45
-CONF_GOALKEEPER = 0.45
+CONF_PLAYER     = 0.25
+CONF_GOALKEEPER = 0.25
 CONF_BALL       = 0.30
 
 # Ball-Tracking deaktivieren bis genug Trainingsdaten vorhanden sind
@@ -200,7 +200,7 @@ else:
 team_votes: dict[int, list[int]] = {}
 team_locked: dict[int, int] = {}       # track_id → fixiertes Team
 track_positions: dict[int, list[float]] = {}  # track_id → Feld-X-Positionen
-MAX_PLAYERS = 13
+MAX_PLAYERS = 14
 AUTO_LOCK_VOTES = 15
 AUTO_LOCK_MIN_RATIO = 0.75
 

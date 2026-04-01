@@ -8,3 +8,21 @@ finetune/*.zip
 .venv/
 __pycache__/
 *.pyc
+
+# --- Outputs / Logs ---
+pipeline_log.txt
+finetune/train_log*.txt
+*.log
+
+# --- Training artifacts (generated) ---
+finetune/runs/
+runs/
+
+# --- Raw/Exported datasets (keep local, not in git) ---
+finetune/_raw/
+finetune/annotation_frames/
+finetune/annotation_frames_v2/
+finetune/roboflow_export/
+
+# --- Model weights (download/train locally) ---
+*.pt
