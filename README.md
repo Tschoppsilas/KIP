@@ -24,3 +24,20 @@ Der Fokus liegt auf der Uebertragung von Spielszenen auf ein digitales Taktikboa
    - Fuer spaetere Erkennungsphase (Phase 3): `pip install -r requirements-phase3.txt`
 3. Tests ausfuehren:
    - `pytest`
+
+## Ausfuehren (End-to-End Pipeline)
+Das Hauptskript ist `run_full_pipeline.py`.
+
+- Beispiel:
+  - `python3 run_full_pipeline.py Videos/Trainingsdaten/Mittelland_4.mp4`
+
+Beim Start erscheint ein Setup-Dialog:
+- Kalibrierung im Video (6 Punkte)
+- Vorschau/Pruefung auf dem Taktikboard
+- Spieler sampeln (Team A/B + Schiri)
+
+## Ordner
+- `outputs/`: generierte Videos/Logs (nicht versioniert)
+- `scripts/`: Hilfsskripte (Kalibrierung, Visualisierung, Demos)
+- `docs/`: Notizen/TODO
+- `archive/`: alte/abgelegte Dateien (z. B. Kalibrierungs-JSONs)
