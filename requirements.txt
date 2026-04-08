@@ -1,3 +1,7 @@
 numpy
 opencv-python
 pytest
+supervision
+pillow
+scikit-learn
+ultralytics

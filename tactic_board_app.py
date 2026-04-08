@@ -30,7 +30,8 @@ logger = logging.getLogger("tactic_board_app")
 VIDEO      = sys.argv[1] if len(sys.argv) > 1 else "Videos/Muenchenstein_1.mp4"
 N_FRAMES   = int(sys.argv[2]) if len(sys.argv) > 2 else 90
 CALIB_JSON = sys.argv[3] if len(sys.argv) > 3 else "calibration_muenchenstein1.json"
-MODEL      = "finetune/runs/train/weights/best.pt"
+_MODEL_FINETUNED = "finetune/runs/train/weights/best.pt"
+MODEL      = _MODEL_FINETUNED if __import__("pathlib").Path(_MODEL_FINETUNED).exists() else "yolo11n.pt"
 BOARD_IMG  = "Taktikboard/Taktikboard.png"
 
 logger.info("=== Taktikboard-App ===")

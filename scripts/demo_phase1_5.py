@@ -19,6 +19,11 @@ from __future__ import annotations
 import os
 import sys
 import logging
+from pathlib import Path
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
 
 # Qt5/XCB auf Wayland-Desktops erzwingen
 os.environ.setdefault("QT_QPA_PLATFORM", "xcb")

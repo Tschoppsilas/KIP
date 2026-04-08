@@ -116,14 +116,14 @@
 
 ## Phase 8: Integration und Tests
 ### Must
-- [ ] End-to-End-Datenfluss verbunden (`Video -> YOLO -> Tracking -> Team -> GUI -> Export`).
+- [x] End-to-End-Datenfluss verbunden (`Video -> YOLO -> Tracking -> Team -> GUI -> Export`).
 - [ ] Workflow-Test aus Trainersicht durchgefuehrt.
-- [ ] Fehlerfaelle abgefangen (falsche Teamzuordnung, Tracking-Ausfall, Ball nicht erkannt).
+- [x] Fehlerfaelle abgefangen (falsche Teamzuordnung, Tracking-Ausfall, Ball nicht erkannt).
 
 ### Should
-- [ ] GUI zeigt klare Warnungen und Korrekturmoeglichkeiten.
+- [x] GUI zeigt klare Warnungen und Korrekturmoeglichkeiten.
 - [ ] Datenschutz-Hinweis fuer potenziell personenbezogene Videodaten im Projektablauf dokumentieren.
-- [ ] End-to-End-Validierung mit feinjustiertem Modell gegen Baseline dokumentieren (Qualitaet + Laufzeit).
+- [x] End-to-End-Validierung mit feinjustiertem Modell gegen Baseline dokumentiert (eval_results.json).
 
 ### Could
 - [ ] Kurzes Testprotokoll pro Demo-Clip dokumentieren.

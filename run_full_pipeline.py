@@ -44,11 +44,12 @@ logger = logging.getLogger("pipeline")
 # KONFIGURATION – hier anpassen
 # ===========================================================================
 
-VIDEO      = sys.argv[1] if len(sys.argv) > 1 else "Videos/Trainingsdaten/Mittelland_4.mp4"
+VIDEO      = sys.argv[1] if len(sys.argv) > 1 else "Videos/Mittelland_4.mp4"
 CALIB_JSON = sys.argv[2] if len(sys.argv) > 2 else "calibration_mittelland_4.json"
 N_FRAMES   = int(sys.argv[3]) if len(sys.argv) > 3 else 0   # 0 = ganzes Video
 OUTPUT     = sys.argv[4] if len(sys.argv) > 4 else "output_combined.mp4"
-MODEL      = "finetune/runs/train/weights/best.pt"
+_MODEL_FINETUNED = "finetune/runs/train/weights/best.pt"
+MODEL      = _MODEL_FINETUNED if Path(_MODEL_FINETUNED).exists() else "yolo11n.pt"
 BOARD_IMG  = "Taktikboard/Taktikboard.png"
 
 # Konfidenz-Schwellen

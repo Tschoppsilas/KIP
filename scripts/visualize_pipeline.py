@@ -32,6 +32,11 @@ import time
 import uuid
 from pathlib import Path
 
+# Projektroot ins sys.path eintragen, damit `src.*` gefunden wird
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
 os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
 
 import cv2
@@ -76,7 +81,8 @@ VIDEO    = sys.argv[1] if len(sys.argv) > 1 else "Videos/Muenchenstein_1.mp4"
 N_FRAMES = int(sys.argv[2]) if len(sys.argv) > 2 else 90
 OUTPUT   = sys.argv[3] if len(sys.argv) > 3 else "output_annotated.mp4"
 PLAYER_CONF = float(sys.argv[4]) if len(sys.argv) > 4 else 0.20
-MODEL    = sys.argv[5] if len(sys.argv) > 5 else "finetune/runs/train/weights/best.pt"
+_MODEL_FINETUNED = "finetune/runs/train/weights/best.pt"
+MODEL    = sys.argv[5] if len(sys.argv) > 5 else (_MODEL_FINETUNED if Path(_MODEL_FINETUNED).exists() else "yolo11n.pt")
 CALIB    = "calibration_muenchenstein1.json"
 
 # ---------------------------------------------------------------------------
@@ -130,7 +136,7 @@ logger.info("Lade YOLO-Modell …")
 detector = Detector(
                     MODEL,
                     conf_thresholds={"player": PLAYER_CONF, "goalkeeper": PLAYER_CONF, "ball": 0.25},
-                    detect_ball=True)
+                    detect_ball=False)
 
 # Tracker
 tracker = PlayerTracker(frame_rate=int(info.fps))
@@ -242,7 +248,8 @@ logger.info("Sammle Farbmerkmale für Teamzuordnung (erste 30 Frames) …")
 fit_features = []
 fit_frames_used = 0
 for fi, frame in iter_frames(VIDEO, max_frames=30):
-    dets = detector.detect(frame, frame_index=fi)
+    dets = [d for d in detector.detect(frame, frame_index=fi)
+            if d.class_name != "referee"]
     tracked = tracker.update(dets, frame_index=fi)
     for player in tracked:
         feat = extract_hsv_feature(frame, player.bbox)
@@ -253,7 +260,9 @@ for fi, frame in iter_frames(VIDEO, max_frames=30):
 tracker.reset()   # Tracker für den Haupt-Durchlauf zurücksetzen
 
 if len(fit_features) >= 2:
-    assigner.fit(fit_features)
+    # n_clusters=2: nur zwei Teams, kein separater Schiri-Cluster.
+    # Mit k=3 landen bei ähnlichen Trikotsfarben viele Spieler im "UNKNOWN"-Bucket.
+    assigner.fit(fit_features, n_clusters=2)
     assigner_fitted = True
     logger.info("K-Means trainiert auf %d Feature-Vektoren.", len(fit_features))
 else:
@@ -270,8 +279,9 @@ frame_count = 0
 
 for fi, frame in iter_frames(VIDEO, max_frames=N_FRAMES):
 
-    # Detection + Tracking
-    dets = detector.detect(frame, frame_index=fi)
+    # Detection + Tracking (Schiedsrichter explizit ausfiltern)
+    dets = [d for d in detector.detect(frame, frame_index=fi)
+            if d.class_name != "referee"]
     tracked = tracker.update(dets, frame_index=fi)
     all_tracked_frames.append(tracked)
     if fi < 5 or fi % 30 == 0:
@@ -305,6 +315,13 @@ for fi, frame in iter_frames(VIDEO, max_frames=N_FRAMES):
             team = assigner.get_team(player.track_id, feat) if feat is not None else -1
         else:
             team = -1
+
+        # Positions-Fallback: Spieler links → Team A, rechts → Team B
+        if team == -1 and H is not None:
+            cx_px = (x1 + x2) / 2.0
+            cy_px = float(y2)
+            bx, _ = transform_point((cx_px, cy_px), H)
+            team = TEAM_A if bx < 20.0 else TEAM_B
         counts[team] = counts.get(team, 0) + 1
 
         color = TEAM_COLORS[team]

@@ -37,6 +37,24 @@ _DEFAULT_CONF: dict[str, float] = {
     "ball":       0.25,
 }
 
+# IoU-Schwelle für YOLO-interne NMS (niedriger = aggressiver, weniger Duplikate)
+_NMS_IOU_THRESHOLD: float = 0.40
+
+# Zusätzlicher Post-NMS IoU-Grenzwert zum Entfernen überlappender Player-Boxen
+_POST_NMS_IOU: float = 0.45
+
+# Größenfilter: Spieler-Bounding-Box darf maximal X% des Frames überspannen.
+# Verhindert, dass Tore/Banden/Anzeigetafeln als Spieler erkannt werden.
+_MAX_BOX_WIDTH_FRAC:  float = 0.15   # max 15% der Frame-Breite
+_MAX_BOX_HEIGHT_FRAC: float = 0.50   # max 50% der Frame-Höhe
+_MIN_BOX_WIDTH_FRAC:  float = 0.005  # min 0.5% (Mindestgrösse gegen Pixel-Rauschen)
+_MIN_BOX_HEIGHT_FRAC: float = 0.010  # min 1.0%
+# Aspektverhältnis h/w eines stehenden Spielers.
+# Echte Spieler-Boxen: Verhältnis 2.0–6.0 (hoch und schmal).
+# Falsch erkannte Strukturen (Tore, Banden, Wände) tendieren zu <1.8 (breiter).
+_MIN_ASPECT_RATIO: float = 1.8
+_MAX_ASPECT_RATIO: float = 7.0
+
 # Default YOLOv11 nano weights (auto-downloaded by ultralytics on first use)
 DEFAULT_MODEL = "yolo11n.pt"
 
@@ -125,18 +143,24 @@ class Detector:
         Returns:
             List of DetectionResult objects passing confidence thresholds.
         """
-        # Run YOLO with low global threshold; we filter per class below
+        # Run YOLO mit niedrigem Global-Threshold; per-Klassen-Filter danach.
+        # iou=_NMS_IOU_THRESHOLD: aggressivere YOLO-interne NMS verhindert
+        # doppelte Boxen für denselben Spieler schon im Modell-Output.
         results = self._model(
             frame_bgr,
             verbose=False,
             device=self._device,
             conf=min(self.conf_thresholds.values()),
+            iou=_NMS_IOU_THRESHOLD,
         )
+
+        frame_h, frame_w = frame_bgr.shape[:2]
 
         detections: list[DetectionResult] = []
         raw_person_conf: list[float] = []
         raw_person_count = 0
         filtered_low_conf_count = 0
+        filtered_size_count = 0
         for result in results:
             if result.boxes is None:
                 continue
@@ -160,6 +184,26 @@ class Detector:
                     continue
                 if domain == "ball" and not self._detect_ball:
                     continue
+
+                # ── Größen- und Aspektverhältnis-Filter (alle Personen-Klassen) ──
+                # "referee" hat oft riesige Fehlboxen → gleiche Filterung.
+                # Bälle sind rund/klein – kein Aspektverhältnis-Check nötig.
+                if domain in ("player", "goalkeeper", "referee"):
+                    box_w = x2 - x1
+                    box_h = y2 - y1
+                    rel_w = box_w / frame_w
+                    rel_h = box_h / frame_h
+                    aspect = box_h / box_w if box_w > 0 else 0.0
+                    if (
+                        rel_w > _MAX_BOX_WIDTH_FRAC
+                        or rel_h > _MAX_BOX_HEIGHT_FRAC
+                        or rel_w < _MIN_BOX_WIDTH_FRAC
+                        or rel_h < _MIN_BOX_HEIGHT_FRAC
+                        or aspect < _MIN_ASPECT_RATIO
+                        or aspect > _MAX_ASPECT_RATIO
+                    ):
+                        filtered_size_count += 1
+                        continue
 
                 if conf < self.conf_thresholds.get(domain, 0.0):
                     filtered_low_conf_count += 1
@@ -193,6 +237,7 @@ class Detector:
                     "threshold_player": self.conf_thresholds.get("player"),
                     "raw_person_count": raw_person_count,
                     "filtered_low_conf_count": filtered_low_conf_count,
+                    "filtered_size_count": filtered_size_count,
                     "kept_detection_count": len(detections),
                     "raw_person_conf_min": conf_min,
                     "raw_person_conf_max": conf_max,
@@ -200,13 +245,19 @@ class Detector:
             )
             # endregion
 
+        # Post-NMS: überlappende Spieler-Boxen klassen-übergreifend entfernen
+        before_nms = len(detections)
+        detections = self._apply_post_nms(detections)
+        removed = before_nms - len(detections)
+
         logger.debug(
-            "Frame %d: %d Detektionen (%d Spieler, %d TH, %d Ball)",
+            "Frame %d: %d Detektionen (%d Spieler, %d TH, %d Ball) – Post-NMS: -%d Duplikate",
             frame_index,
             len(detections),
             sum(1 for d in detections if d.class_name == "player"),
             sum(1 for d in detections if d.class_name == "goalkeeper"),
             sum(1 for d in detections if d.class_name == "ball"),
+            removed,
         )
         return detections
 
@@ -241,6 +292,49 @@ class Detector:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _apply_post_nms(
+        detections: list[DetectionResult],
+        iou_threshold: float = _POST_NMS_IOU,
+    ) -> list[DetectionResult]:
+        """Entfernt überlappende Detektionen per greedy IoU-NMS.
+
+        Sortiert nach Konfidenz (absteigend) und verwirft jede Detection,
+        deren IoU mit einer bereits behaltenen Box den Schwellwert überschreitet.
+        Verhindert Mehrfacherkennungen desselben Spielers.
+        """
+        if len(detections) <= 1:
+            return detections
+
+        # Absteigend nach Konfidenz sortieren
+        dets = sorted(detections, key=lambda d: d.confidence, reverse=True)
+        kept: list[DetectionResult] = []
+
+        for candidate in dets:
+            cx1, cy1, cx2, cy2 = candidate.bbox
+            suppress = False
+            for ref in kept:
+                rx1, ry1, rx2, ry2 = ref.bbox
+                # Intersection
+                ix1 = max(cx1, rx1)
+                iy1 = max(cy1, ry1)
+                ix2 = min(cx2, rx2)
+                iy2 = min(cy2, ry2)
+                inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+                if inter == 0.0:
+                    continue
+                area_c = max(0.0, cx2 - cx1) * max(0.0, cy2 - cy1)
+                area_r = max(0.0, rx2 - rx1) * max(0.0, ry2 - ry1)
+                union = area_c + area_r - inter
+                iou = inter / union if union > 0 else 0.0
+                if iou > iou_threshold:
+                    suppress = True
+                    break
+            if not suppress:
+                kept.append(candidate)
+
+        return kept
 
     def _map_class(self, coco_cls: int) -> str | None:
         """Map a COCO class ID to a domain class name, or None to skip."""
