@@ -1,5 +1,16 @@
 *.mp4
+
+# Bilder (lokal / große Binärdateien — nicht ins Repo)
 *.png
+*.jpg
+*.jpeg
+*.JPG
+*.JPEG
+*.webp
+*.gif
+*.bmp
+*.tiff
+*.tif
 
 # Roboflow-Exports (ZIPs >100MB sind auf GitHub nicht erlaubt)
 finetune/*.zip
