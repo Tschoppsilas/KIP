@@ -92,7 +92,10 @@ canvas { cursor: crosshair; display: block; }
   <button onclick="saveLabels()" style="color:#8f8;">Speichern (S)</button>
   <button onclick="deleteSelected()" style="color:#f88;">Löschen (D)</button>
   <button onclick="clearAll()" style="color:#f44;">Alle löschen (A)</button>
-  <button id="btnLabels" onclick="toggleLabels()" title="Labels ein/ausblenden (L)">Labels: AN</button>
+  <button id="btnLabels"  onclick="toggleLabels()"  title="Labels ein/ausblenden (L)">Labels: AN</button>
+  <button id="btnSharpen" onclick="toggleSharpen()" title="Schärfung ein/ausblenden (K)">Schärfe: AUS</button>
+  <button onclick="resetView();draw()" title="Zoom zurücksetzen (R)" style="color:#aaf">Zoom: Reset (R)</button>
+  <span id="zoomHint" style="color:#aaa;font-size:12px;align-self:center">🖱 Rad=Zoom | Leertaste+Ziehen=Pan</span>
   <span style="color:#555;">|</span>
   KLASSE:
   <button class="cls-btn" id="cls0" onclick="setCls(0)">0 player</button>
@@ -111,7 +114,19 @@ const CLS_NAMES  = ["player","goalkeeper","ball","referee"];
 let images = [], imgIdx = 0, curCls = 0, curImg = null;
 let boxes = [], selected = -1, dirty = false;
 let dragStart = null, dragCur = null;
-let showLabels = true;
+let showLabels = true, sharpen = false;
+
+// ── Zoom / Pan ────────────────────────────────────────────────────────────
+let zoom = 1.0, panX = 0, panY = 0;
+let spaceDown = false, panDragStart = null, panAtStart = null;
+
+function resetView(){ zoom=1.0; panX=0; panY=0; }
+
+// Maus-Canvas → Bild-Display-Koordinaten (vor Zoom/Pan)
+function canvasToDisplay(cx,cy){ return [(cx-panX)/zoom, (cy-panY)/zoom]; }
+function displayToNorm(dx,dy){ return [dx/canvas.width, dy/canvas.height]; }
+function mouseToNorm(mx,my){ const[dx,dy]=canvasToDisplay(mx,my); return displayToNorm(dx,dy); }
+function normToDisplay(nx,ny){ return [nx*canvas.width, ny*canvas.height]; }
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
 
@@ -139,110 +154,123 @@ function setCls(c){ curCls=c; updateClsButtons();
 // ── Bilder laden ──────────────────────────────────────────────────────────
 function loadImage(idx){
   if(idx<0||idx>=images.length) return;
-  imgIdx = idx; selected=-1; dirty=false;
-  const name = images[idx];
+  imgIdx=idx; selected=-1; dirty=false; resetView();
+  const name=images[idx];
   fetch('/labels/'+encodeURIComponent(name)).then(r=>r.json()).then(data=>{
-    boxes = data.boxes;
-    const img = new Image();
-    img.onload = ()=>{
-      curImg = img;
-      // Bild auf max. Fenstergrösse skalieren
-      const maxW = window.innerWidth  - 20;
-      const maxH = window.innerHeight - 100;
-      const s    = Math.min(maxW/img.width, maxH/img.height, 1.0);
-      canvas.width  = Math.round(img.width  * s);
-      canvas.height = Math.round(img.height * s);
-      canvas.dataset.scale = s;
+    boxes=data.boxes;
+    const img=new Image();
+    img.onload=()=>{
+      curImg=img;
+      const maxW=window.innerWidth-20, maxH=window.innerHeight-100;
+      const s=Math.min(maxW/img.width, maxH/img.height, 1.0);
+      canvas.width=Math.round(img.width*s);
+      canvas.height=Math.round(img.height*s);
       draw();
       setStatus(`[${idx+1}/${images.length}]  ${name}  |  Boxen: ${boxes.length}`);
     };
-    img.src = '/image/'+encodeURIComponent(name);
+    img.src='/image/'+encodeURIComponent(name)+(sharpen?'?sharpen=1':'');
   });
 }
 
 function draw(){
   if(!curImg) return;
-  const s = parseFloat(canvas.dataset.scale||1);
+  ctx.save();
   ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.setTransform(zoom,0,0,zoom,panX,panY);
   ctx.drawImage(curImg,0,0,canvas.width,canvas.height);
 
-  // Boxen zeichnen
   boxes.forEach((b,i)=>{
-    const x1 = (b.cx-b.bw/2)*canvas.width;
-    const y1 = (b.cy-b.bh/2)*canvas.height;
-    const bw = b.bw*canvas.width, bh=b.bh*canvas.height;
-    ctx.strokeStyle = i===selected ? '#00ddff' : CLS_COLORS[b.cls%4];
-    ctx.lineWidth   = i===selected ? 3 : 2;
+    const[x1,y1]=normToDisplay(b.cx-b.bw/2, b.cy-b.bh/2);
+    const bw=b.bw*canvas.width, bh=b.bh*canvas.height;
+    const color=i===selected?'#00ddff':CLS_COLORS[b.cls%4];
+    ctx.strokeStyle=color; ctx.lineWidth=(i===selected?3:2)/zoom;
     ctx.strokeRect(x1,y1,bw,bh);
-    // Label
     if(showLabels){
-      const lbl = CLS_NAMES[b.cls]||String(b.cls);
-      ctx.font='bold 12px monospace';
-      const tw=ctx.measureText(lbl).width;
-      ctx.fillStyle=ctx.strokeStyle;
-      ctx.fillRect(x1,y1-17,tw+6,17);
-      ctx.fillStyle='#000';
-      ctx.fillText(lbl,x1+3,y1-4);
+      const lbl=CLS_NAMES[b.cls]||String(b.cls);
+      const fs=Math.max(10,12/zoom);
+      ctx.font=`bold ${fs}px monospace`;
+      const tw=ctx.measureText(lbl).width, lh=fs+4;
+      ctx.fillStyle=color; ctx.fillRect(x1,y1-lh,tw+6,lh);
+      ctx.fillStyle='#000'; ctx.fillText(lbl,x1+3,y1-3);
     }
   });
 
-  // Laufende Zeichnung
-  if(dragStart && dragCur){
-    const [x1,y1]=dragStart, [x2,y2]=dragCur;
-    if(Math.abs(x2-x1)>4||Math.abs(y2-y1)>4){
-      ctx.strokeStyle=CLS_COLORS[curCls]; ctx.lineWidth=2;
-      ctx.setLineDash([5,3]);
-      ctx.strokeRect(Math.min(x1,x2),Math.min(y1,y2),Math.abs(x2-x1),Math.abs(y2-y1));
+  if(dragStart&&dragCur&&!spaceDown){
+    const[sx,sy]=canvasToDisplay(...dragStart);
+    const[ex,ey]=canvasToDisplay(...dragCur);
+    if(Math.abs(ex-sx)>2||Math.abs(ey-sy)>2){
+      ctx.strokeStyle=CLS_COLORS[curCls]; ctx.lineWidth=2/zoom;
+      ctx.setLineDash([6/zoom,3/zoom]);
+      ctx.strokeRect(Math.min(sx,ex),Math.min(sy,ey),Math.abs(ex-sx),Math.abs(ey-sy));
       ctx.setLineDash([]);
     }
   }
-  setStatus(`[${imgIdx+1}/${images.length}]  ${images[imgIdx]}${dirty?' *':''}  |  Boxen: ${boxes.length}${selected>=0?'  |  Ausgewählt: '+selected:''}`);
+  ctx.restore();
+  setStatus(`[${imgIdx+1}/${images.length}]  ${images[imgIdx]}${dirty?' *':''}  |  Boxen: ${boxes.length}${selected>=0?' | Sel:'+selected:''}  |  Zoom: ${Math.round(zoom*100)}%`);
 }
 
 // ── Maus-Events ───────────────────────────────────────────────────────────
+canvas.addEventListener('contextmenu', e=>e.preventDefault());
+
+canvas.addEventListener('wheel', e=>{
+  e.preventDefault();
+  const factor=e.deltaY<0?1.15:1/1.15;
+  const newZoom=Math.max(0.5,Math.min(12.0,zoom*factor));
+  panX=e.offsetX-(e.offsetX-panX)*newZoom/zoom;
+  panY=e.offsetY-(e.offsetY-panY)*newZoom/zoom;
+  zoom=newZoom; draw();
+},{passive:false});
+
 canvas.addEventListener('mousedown', e=>{
+  if(spaceDown){
+    panDragStart=[e.offsetX,e.offsetY]; panAtStart=[panX,panY];
+    canvas.style.cursor='grabbing'; return;
+  }
   if(e.button===2){
-    // Rechtsklick → löschen
-    const hit=hitTest(e.offsetX, e.offsetY);
-    if(hit>=0){ boxes.splice(hit,1); selected=-1; dirty=true; draw(); }
+    const[nx,ny]=mouseToNorm(e.offsetX,e.offsetY);
+    const hit=hitTest(nx,ny);
+    if(hit>=0){boxes.splice(hit,1);selected=-1;dirty=true;draw();}
     return;
   }
   dragStart=[e.offsetX,e.offsetY]; dragCur=[e.offsetX,e.offsetY];
 });
 canvas.addEventListener('mousemove', e=>{
-  if(dragStart){ dragCur=[e.offsetX,e.offsetY]; draw(); }
+  if(panDragStart){
+    panX=panAtStart[0]+(e.offsetX-panDragStart[0]);
+    panY=panAtStart[1]+(e.offsetY-panDragStart[1]);
+    draw(); return;
+  }
+  if(dragStart){dragCur=[e.offsetX,e.offsetY];draw();}
 });
 canvas.addEventListener('mouseup', e=>{
+  if(panDragStart){
+    panDragStart=null; panAtStart=null;
+    canvas.style.cursor=spaceDown?'grab':'crosshair'; return;
+  }
   if(!dragStart) return;
-  const [sx,sy]=dragStart, ex=e.offsetX, ey=e.offsetY;
-  const dx=Math.abs(ex-sx), dy=Math.abs(ey-sy);
+  const[sx,sy]=dragStart,[ex,ey]=[e.offsetX,e.offsetY];
   dragStart=null; dragCur=null;
-  if(dx>=8 && dy>=8){
-    // Neue Box
-    const x1=Math.min(sx,ex), y1=Math.min(sy,ey);
-    const x2=Math.max(sx,ex), y2=Math.max(sy,ey);
-    const cx=(x1+x2)/2/canvas.width,  cy=(y1+y2)/2/canvas.height;
-    const bw=(x2-x1)/canvas.width,    bh=(y2-y1)/canvas.height;
-    boxes.push({cls:curCls, cx:clamp(cx), cy:clamp(cy),
-                bw:clamp(bw), bh:clamp(bh)});
+  const[dsx,dsy]=canvasToDisplay(sx,sy);
+  const[dex,dey]=canvasToDisplay(ex,ey);
+  if(Math.abs(dex-dsx)>=6&&Math.abs(dey-dsy)>=6){
+    const[nx1,ny1]=displayToNorm(Math.min(dsx,dex),Math.min(dsy,dey));
+    const[nx2,ny2]=displayToNorm(Math.max(dsx,dex),Math.max(dsy,dey));
+    boxes.push({cls:curCls,cx:clamp((nx1+nx2)/2),cy:clamp((ny1+ny2)/2),
+                bw:clamp(nx2-nx1),bh:clamp(ny2-ny1)});
     selected=boxes.length-1; dirty=true;
   } else {
-    selected=hitTest(sx,sy);
+    const[nx,ny]=mouseToNorm(ex,ey); selected=hitTest(nx,ny);
   }
   draw();
 });
-canvas.addEventListener('contextmenu', e=>e.preventDefault());
 
-function clamp(v){ return Math.max(0,Math.min(1,v)); }
+function clamp(v){return Math.max(0,Math.min(1,v));}
 
-function hitTest(mx,my){
-  let best=-1, bestArea=Infinity;
+function hitTest(nx,ny){
+  let best=-1,bestArea=Infinity;
   boxes.forEach((b,i)=>{
-    const x1=(b.cx-b.bw/2)*canvas.width,  y1=(b.cy-b.bh/2)*canvas.height;
-    const x2=(b.cx+b.bw/2)*canvas.width,  y2=(b.cy+b.bh/2)*canvas.height;
-    if(mx>=x1&&mx<=x2&&my>=y1&&my<=y2){
-      const a=(x2-x1)*(y2-y1);
-      if(a<bestArea){ bestArea=a; best=i; }
+    if(nx>=b.cx-b.bw/2&&nx<=b.cx+b.bw/2&&ny>=b.cy-b.bh/2&&ny<=b.cy+b.bh/2){
+      const a=b.bw*b.bh; if(a<bestArea){bestArea=a;best=i;}
     }
   });
   return best;
@@ -256,43 +284,53 @@ function toggleLabels(){
   btn.style.color=showLabels?'#8f8':'#f88';
   draw();
 }
-
+function toggleSharpen(){
+  sharpen=!sharpen;
+  const btn=document.getElementById('btnSharpen');
+  btn.textContent='Schärfe: '+(sharpen?'AN':'AUS');
+  btn.style.color=sharpen?'#8f8':'#f88';
+  loadImage(imgIdx);
+}
 function deleteSelected(){
-  if(selected>=0){ boxes.splice(selected,1); selected=-1; dirty=true; draw(); }}
-
-function clearAll(){ if(!confirm('Alle Boxen löschen?')) return;
-  boxes=[]; selected=-1; dirty=true; draw(); }
-
+  if(selected>=0){boxes.splice(selected,1);selected=-1;dirty=true;draw();}
+}
+function clearAll(){
+  if(!confirm('Alle Boxen löschen?')) return;
+  boxes=[];selected=-1;dirty=true;draw();
+}
 async function saveLabels(){
   const name=images[imgIdx];
   await fetch('/labels/'+encodeURIComponent(name),
-    {method:'POST', headers:{'Content-Type':'application/json'},
-     body:JSON.stringify({boxes})});
+    {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({boxes})});
   dirty=false; draw();
   setStatus(`Gespeichert: ${name}  (${boxes.length} Boxen)`);
 }
-
-async function nextImg(){
-  await saveLabels();
-  loadImage((imgIdx+1)%images.length);
-}
-async function prevImg(){
-  await saveLabels();
-  loadImage((imgIdx-1+images.length)%images.length);
-}
+async function nextImg(){await saveLabels();loadImage((imgIdx+1)%images.length);}
+async function prevImg(){await saveLabels();loadImage((imgIdx-1+images.length)%images.length);}
 
 // ── Tastatur ──────────────────────────────────────────────────────────────
 document.addEventListener('keydown', e=>{
   if(e.target.tagName==='INPUT') return;
-  if(e.key==='n'||e.key===' '||e.key==='Enter') { e.preventDefault(); nextImg(); }
-  else if(e.key==='p'||e.key==='Backspace')      { e.preventDefault(); prevImg(); }
-  else if(e.key==='s')  saveLabels();
-  else if(e.key==='d')  deleteSelected();
-  else if(e.key==='a')  clearAll();
-  else if(e.key==='Tab'){ e.preventDefault();
-    if(boxes.length){ selected=(selected+1)%boxes.length; draw(); }}
+  if(e.code==='Space'&&!spaceDown){
+    spaceDown=true; canvas.style.cursor='grab'; e.preventDefault(); return;
+  }
+  if(e.key==='n'||e.key==='Enter')          {e.preventDefault();nextImg();}
+  else if(e.key==='p'||e.key==='Backspace') {e.preventDefault();prevImg();}
+  else if(e.key==='s') saveLabels();
+  else if(e.key==='d') deleteSelected();
+  else if(e.key==='a') clearAll();
+  else if(e.key==='r') {resetView();draw();}
+  else if(e.key==='Tab'){e.preventDefault();
+    if(boxes.length){selected=(selected+1)%boxes.length;draw();}}
   else if('0123'.includes(e.key)) setCls(parseInt(e.key));
   else if(e.key==='l'||e.key==='L') toggleLabels();
+  else if(e.key==='k'||e.key==='K') toggleSharpen();
+});
+document.addEventListener('keyup', e=>{
+  if(e.code==='Space'){
+    spaceDown=false; panDragStart=null;
+    canvas.style.cursor='crosshair';
+  }
 });
 </script>
 </body></html>
@@ -327,10 +365,21 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, "application/json", data)
 
         elif path.startswith("/image/"):
-            name = path[7:]
+            name     = path[7:]
+            qs       = urllib.parse.parse_qs(self.path.split("?")[1]) if "?" in self.path else {}
+            sharpen  = qs.get("sharpen", ["0"])[0] == "1"
             img_path = self.img_dir / name
             if img_path.exists():
-                self._send(200, "image/jpeg", img_path.read_bytes())
+                if sharpen:
+                    import cv2, numpy as np
+                    img = cv2.imread(str(img_path))
+                    # Unsharp Mask: geschärftes Bild = original + (original - blur)
+                    blurred = cv2.GaussianBlur(img, (0, 0), sigmaX=2.0)
+                    sharpened = cv2.addWeighted(img, 1.8, blurred, -0.8, 0)
+                    _, buf = cv2.imencode(".jpg", sharpened, [cv2.IMWRITE_JPEG_QUALITY, 92])
+                    self._send(200, "image/jpeg", buf.tobytes())
+                else:
+                    self._send(200, "image/jpeg", img_path.read_bytes())
             else:
                 self._send(404, "text/plain", b"not found")
 

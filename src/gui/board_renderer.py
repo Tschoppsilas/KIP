@@ -199,20 +199,31 @@ class BoardRenderer:
 
         color = TEAM_COLORS.get(p.team, COLOR_UNKNOWN)
 
+        # Negatives track_id = DET-only (ungetrackt) → kleinerer, transparenterer Kreis
+        is_tracked = p.track_id >= 0
+
         if p.class_name == "goalkeeper":
-            # Torwart: gefülltes Quadrat mit Rand
-            r = 16
+            r = 16 if is_tracked else 11
             draw.rectangle((cx - r, cy - r, cx + r, cy + r),
                             fill=COLOR_GOALKEEPER, outline=(80, 0, 120, 255), width=2)
         else:
-            # Feldspieler: Kreis
-            r = 14
+            r = 14 if is_tracked else 9
+            # DET-only: niedrigere Deckkraft (Alpha 130 statt 230)
+            if is_tracked:
+                fill_color = color
+                outline_color = (0, 0, 0, 200)
+                outline_w = 2
+            else:
+                fill_color = (*color[:3], 140)  # semi-transparent
+                outline_color = (0, 0, 0, 100)
+                outline_w = 1
             draw.ellipse((cx - r, cy - r, cx + r, cy + r),
-                         fill=color, outline=(0, 0, 0, 180), width=2)
+                         fill=fill_color, outline=outline_color, width=outline_w)
 
-        # Label (Track-ID) zentriert
-        label = p.label[:3]
-        draw.text((cx, cy), label, fill=(255, 255, 255, 240), anchor="mm")
+        # Label nur bei getrackte Spieler (nicht bei DET-only)
+        if is_tracked and p.label:
+            label = p.label[:3]
+            draw.text((cx, cy), label, fill=(255, 255, 255, 240), anchor="mm")
 
     def _draw_arrow(self, draw: ImageDraw.ImageDraw, arrow: Arrow) -> None:
         x0, y0 = self.board_to_canvas(arrow.x0, arrow.y0)

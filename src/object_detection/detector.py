@@ -47,13 +47,13 @@ _POST_NMS_IOU: float = 0.45
 # Verhindert, dass Tore/Banden/Anzeigetafeln als Spieler erkannt werden.
 _MAX_BOX_WIDTH_FRAC:  float = 0.15   # max 15% der Frame-Breite
 _MAX_BOX_HEIGHT_FRAC: float = 0.50   # max 50% der Frame-Höhe
-_MIN_BOX_WIDTH_FRAC:  float = 0.005  # min 0.5% (Mindestgrösse gegen Pixel-Rauschen)
-_MIN_BOX_HEIGHT_FRAC: float = 0.010  # min 1.0%
+_MIN_BOX_WIDTH_FRAC:  float = 0.003  # min 0.3% — weit entfernte Spieler können sehr klein sein
+_MIN_BOX_HEIGHT_FRAC: float = 0.007  # min 0.7%
 # Aspektverhältnis h/w eines stehenden Spielers.
-# Echte Spieler-Boxen: Verhältnis 2.0–6.0 (hoch und schmal).
-# Falsch erkannte Strukturen (Tore, Banden, Wände) tendieren zu <1.8 (breiter).
-_MIN_ASPECT_RATIO: float = 1.8
-_MAX_ASPECT_RATIO: float = 7.0
+# Weit entfernte Spieler erscheinen kleiner und kompakter → tieferes Minimum.
+# Falsch erkannte Strukturen (Tore, Banden) tendieren zu <1.2 (sehr breit).
+_MIN_ASPECT_RATIO: float = 1.2
+_MAX_ASPECT_RATIO: float = 8.0
 
 # Default YOLOv11 nano weights (auto-downloaded by ultralytics on first use)
 DEFAULT_MODEL = "yolo11n.pt"

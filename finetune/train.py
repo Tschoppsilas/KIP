@@ -28,6 +28,9 @@ def train(
     batch: int = 8,
     device: str = "cpu",
     patience: int = 10,
+    lr0: float = 0.01,
+    lrf: float = 0.01,
+    resume: bool = False,
 ) -> Path:
     """Startet das Fine-Tuning.
 
@@ -58,24 +61,34 @@ def train(
             "  python finetune/download_dataset.py --api-key KEY ...   (Roboflow)"
         )
 
-    print(f"Basismodell:  {base_model}")
-    print(f"Datensatz:    {DATA_YAML}")
-    print(f"Epochen:      {epochs}  |  Batch: {batch}  |  Device: {device}")
-    print()
-
-    model = YOLO(base_model)
-    results = model.train(
-        data=str(DATA_YAML),
-        epochs=epochs,
-        imgsz=imgsz,
-        batch=batch,
-        device=device,
-        patience=patience,
-        project=str(RUNS_DIR),
-        name="train",
-        exist_ok=True,
-        verbose=True,
-    )
+    # Beim Resume: last.pt laden und Training fortsetzen
+    if resume:
+        last_pt = RUNS_DIR / "train" / "weights" / "last.pt"
+        if not last_pt.exists():
+            raise FileNotFoundError(f"Kein last.pt zum Fortsetzen: {last_pt}")
+        print(f"Fortsetzen von: {last_pt}")
+        model = YOLO(str(last_pt))
+        results = model.train(resume=True)
+    else:
+        print(f"Basismodell:  {base_model}")
+        print(f"Datensatz:    {DATA_YAML}")
+        print(f"Epochen:      {epochs}  |  Batch: {batch}  |  Device: {device}")
+        print()
+        model = YOLO(base_model)
+        results = model.train(
+            data=str(DATA_YAML),
+            epochs=epochs,
+            imgsz=imgsz,
+            batch=batch,
+            device=device,
+            patience=patience,
+            lr0=lr0,
+            lrf=lrf,
+            project=str(RUNS_DIR),
+            name="train",
+            exist_ok=True,
+            verbose=True,
+        )
 
     best = RUNS_DIR / "train" / "weights" / "best.pt"
     if best.exists():
@@ -90,7 +103,13 @@ if __name__ == "__main__":
     parser.add_argument("--imgsz",   type=int,   default=640)
     parser.add_argument("--batch",   type=int,   default=8)
     parser.add_argument("--device",  default="cpu")
-    parser.add_argument("--patience",type=int,   default=10)
+    parser.add_argument("--patience", type=int,   default=10)
+    parser.add_argument("--lr0",      type=float, default=0.01,
+                        help="Initiale Lernrate (Standard: 0.01)")
+    parser.add_argument("--lrf",      type=float, default=0.01,
+                        help="Finale Lernrate als Anteil von lr0 (Standard: 0.01)")
+    parser.add_argument("--resume",   action="store_true",
+                        help="Training von letztem Checkpoint (last.pt) fortsetzen")
     args = parser.parse_args()
 
     best = train(
@@ -100,6 +119,9 @@ if __name__ == "__main__":
         batch=args.batch,
         device=args.device,
         patience=args.patience,
+        lr0=args.lr0,
+        lrf=args.lrf,
+        resume=args.resume,
     )
     print("\nFertig! Evaluierung starten mit:")
     print(f"  python finetune/evaluate.py --model {best}")

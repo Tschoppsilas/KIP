@@ -50,6 +50,7 @@ from src.object_detection.detector import Detector
 from src.tracking.tracker import PlayerTracker
 from src.tracking.track import build_trajectories
 from src.tracking.team_assigner import TeamAssigner, extract_hsv_feature, TEAM_A, TEAM_B
+from src.gui.board_renderer import BoardRenderer, BoardState, PlayerSymbol
 
 configure_logging(level=logging.INFO)
 logger = logging.getLogger("visualize")
@@ -135,22 +136,84 @@ except FileNotFoundError:
 logger.info("Lade YOLO-Modell …")
 detector = Detector(
                     MODEL,
-                    conf_thresholds={"player": PLAYER_CONF, "goalkeeper": PLAYER_CONF, "ball": 0.25},
+                    conf_thresholds={"player": PLAYER_CONF, "goalkeeper": PLAYER_CONF,
+                                     "referee": PLAYER_CONF, "ball": 0.25},
                     detect_ball=False)
 
-# Tracker
-tracker = PlayerTracker(frame_rate=int(info.fps))
+# Tracker — niedrige Matching-Schwelle für stabilere Tracks
+tracker = PlayerTracker(
+    frame_rate=int(info.fps),
+    track_activation_threshold=0.10,       # sehr niedrig → fast alle Detektionen werden Tracks
+    lost_track_buffer=int(info.fps * 5),   # 5 Sekunden Track-Puffer
+    minimum_matching_threshold=0.30,       # IoU-Schwelle: sehr tolerant bei schnellen Bewegungen
+)
 
 # TeamAssigner – wird nach den ersten 30 Frames initialisiert
 assigner = TeamAssigner()
 assigner_fitted = False
 
-# VideoWriter
+# ---------------------------------------------------------------------------
+# Split-View: Video links | Taktikboard rechts
+# ---------------------------------------------------------------------------
+_BOARD_IMG_PATH = _PROJECT_ROOT / "Taktikboard" / "Taktikboard.png"
+
+# Ausgabeauflösung: beide Panels auf gleiche Höhe skalieren
+_OUT_H   = 540
+_vid_w   = int(info.width  * _OUT_H / info.height)   # proportional
+
+_board_renderer: BoardRenderer | None = None
+_board_w  = 0
+_board_bg_bgr: np.ndarray | None = None   # leeres Board als Hintergrund (BGR, target-size)
+_board_panel_buf: np.ndarray | None = None  # wiederverwendbarer Puffer
+
+if _BOARD_IMG_PATH.exists():
+    # BoardRenderer direkt auf Zielgrösse einrichten (spart Resize-RAM)
+    _orig_board = __import__("PIL").Image.open(_BOARD_IMG_PATH)
+    _orig_w, _orig_h = _orig_board.size
+    _board_w = int(_orig_w * _OUT_H / _orig_h)
+
+    # Hintergrundbild einmalig auf Zielgrösse vorberechnen (BGR)
+    _board_bg_bgr = cv2.resize(
+        cv2.cvtColor(np.array(_orig_board.convert("RGB")), cv2.COLOR_RGB2BGR),
+        (_board_w, _OUT_H), interpolation=cv2.INTER_AREA
+    )
+    del _orig_board  # Speicher freigeben
+
+    _board_renderer = BoardRenderer(
+        board_image_path=_BOARD_IMG_PATH,
+        field_width_m=40.0,
+        field_height_m=20.0,
+    )
+    # BoardRenderer-Hintergrundbild auf Zielgrösse skalieren → weniger RAM im Render-Loop
+    _bg_small = _board_renderer._bg.resize((_board_w, _OUT_H), __import__("PIL").Image.LANCZOS)
+    _board_renderer._bg = _bg_small
+    _board_renderer.canvas_w, _board_renderer.canvas_h = _board_w, _OUT_H
+    _board_renderer._draw_x0 = int(_board_w * 0.07)
+    _board_renderer._draw_y0 = int(_OUT_H  * 0.07)
+    _board_renderer._draw_x1 = _board_w - _board_renderer._draw_x0
+    _board_renderer._draw_y1 = _OUT_H  - _board_renderer._draw_y0
+    _board_renderer._draw_w  = _board_renderer._draw_x1 - _board_renderer._draw_x0
+    _board_renderer._draw_h  = _board_renderer._draw_y1 - _board_renderer._draw_y0
+
+    _board_panel_buf = _board_bg_bgr.copy()
+    logger.info("Taktikboard geladen ✓  (Render-Auflösung: %dx%d px)", _board_w, _OUT_H)
+else:
+    logger.warning("Taktikboard.png nicht gefunden – nur Video-Ansicht.")
+
+_OUT_W = _vid_w + _board_w
+
+# Vorallokierter kombinierter Output-Frame (kein np.concatenate pro Frame)
+_combined_buf = np.zeros((_OUT_H, _OUT_W, 3), dtype=np.uint8)
+
+# VideoWriter (kombinierte Breite)
 fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-writer = cv2.VideoWriter(OUTPUT, fourcc, info.fps, (info.width, info.height))
+writer = cv2.VideoWriter(OUTPUT, fourcc, info.fps, (_OUT_W, _OUT_H))
 if not writer.isOpened():
     logger.error("VideoWriter konnte nicht geöffnet werden für: %s", OUTPUT)
     sys.exit(1)
+
+logger.info("Ausgabe-Auflösung: %dx%d (Video %dx%d | Board %dx%d)",
+            _OUT_W, _OUT_H, _vid_w, _OUT_H, _board_w, _OUT_H)
 
 # ---------------------------------------------------------------------------
 # Feldgitter vorberechnen (für Kalibrierungsoverlay)
@@ -244,13 +307,23 @@ def _iou_xyxy(a: tuple[float, float, float, float], b: tuple[float, float, float
 # ---------------------------------------------------------------------------
 # Erster Durchlauf: Features für TeamAssigner sammeln (stille Phase)
 # ---------------------------------------------------------------------------
-logger.info("Sammle Farbmerkmale für Teamzuordnung (erste 30 Frames) …")
+logger.info("Sammle Farbmerkmale für Teamzuordnung (erste 50 Frames) …")
 fit_features = []
 fit_frames_used = 0
-for fi, frame in iter_frames(VIDEO, max_frames=30):
+for fi, frame in iter_frames(VIDEO, max_frames=50):
     dets = [d for d in detector.detect(frame, frame_index=fi)
             if d.class_name != "referee"]
     tracked = tracker.update(dets, frame_index=fi)
+
+    # Features aus getrackten Spielern UND ungetrackten Detektionen sammeln
+    used_bboxes = [p.bbox for p in tracked]
+    all_player_dets = [d for d in dets if d.class_name in ("player", "goalkeeper")]
+    for det in all_player_dets:
+        # Nicht doppelt zählen wenn schon via Track erfasst
+        if not any(_iou_xyxy(det.bbox, tb) >= 0.4 for tb in used_bboxes):
+            feat = extract_hsv_feature(frame, det.bbox)
+            if feat is not None:
+                fit_features.append(feat)
     for player in tracked:
         feat = extract_hsv_feature(frame, player.bbox)
         if feat is not None:
@@ -276,6 +349,77 @@ logger.info("Erzeuge annotiertes Video …")
 
 all_tracked_frames = []
 frame_count = 0
+
+# ---------------------------------------------------------------------------
+# Stabilitäts-Caches
+# ---------------------------------------------------------------------------
+from collections import Counter, deque
+
+_SMOOTH_ALPHA    = 0.25   # Bbox-Glättung (kleiner = ruhiger, träger)
+_VOTE_WINDOW     = 12     # Frames für Majority-Vote Team-Abstimmung
+_BOARD_UPDATE_HZ = 8      # Max. Board-Aktualisierungen pro Sekunde
+
+_bbox_smooth:  dict[int, list[float]]       = {}   # track_id → geglättete Bbox
+_team_votes:   dict[int, deque]             = {}   # track_id → letzte N Team-Votes
+_team_stable:  dict[int, int]               = {}   # track_id → stabiles Team (Majority)
+_board_state:  dict[int, dict]              = {}   # track_id → letzter Board-Zustand
+_last_board_fi: int                         = -999 # letztes Frame mit Board-Update
+
+_board_interval = max(1, int(info.fps / _BOARD_UPDATE_HZ))  # z.B. 3 bei 25fps
+
+
+def _vote_team(track_id: int, frame_img, bbox) -> int:
+    """Majority-Vote über ein Zeitfenster: verhindert Team-Wechsel durch Einzel-Fehler."""
+    if track_id not in _team_votes:
+        _team_votes[track_id] = deque(maxlen=_VOTE_WINDOW)
+
+    if assigner_fitted:
+        feat = extract_hsv_feature(frame_img, bbox)
+        vote = assigner.predict(feat) if feat is not None else -1
+    else:
+        vote = -1
+    _team_votes[track_id].append(vote)
+
+    # Mehrheitsentscheid: häufigstes Team in den letzten N Frames
+    votes = list(_team_votes[track_id])
+    valid = [v for v in votes if v != -1]
+    if valid:
+        majority = Counter(valid).most_common(1)[0][0]
+    else:
+        majority = -1
+
+    # Stabiles Team: erst nach genug Votes setzen, danach beibehalten
+    if len(votes) >= _VOTE_WINDOW // 2:
+        _team_stable[track_id] = majority
+    elif track_id not in _team_stable:
+        _team_stable[track_id] = majority
+    return _team_stable[track_id]
+
+
+def _board_update_due(fi: int) -> bool:
+    """Rate-Limiter: gibt True zurück wenn das Taktikboard aktualisiert werden darf.
+
+    Ziel: Spielerpositionen nur ~8× pro Sekunde ans Board schicken statt
+    bei jedem Frame (25-30×/s). So werden kurze Erkennungsfehler und
+    schnelle Team-Wechsel für das menschliche Auge unsichtbar.
+    """
+    global _last_board_fi
+    if fi - _last_board_fi >= _board_interval:
+        _last_board_fi = fi
+        return True
+    return False
+
+
+def _smooth_bbox(track_id: int, bbox: tuple) -> tuple:
+    """Exponential Moving Average auf die Bounding Box anwenden."""
+    b = list(bbox)
+    if track_id not in _bbox_smooth:
+        _bbox_smooth[track_id] = b
+    else:
+        s = _bbox_smooth[track_id]
+        _bbox_smooth[track_id] = [_SMOOTH_ALPHA * b[i] + (1 - _SMOOTH_ALPHA) * s[i]
+                                   for i in range(4)]
+    return tuple(_bbox_smooth[track_id])
 
 for fi, frame in iter_frames(VIDEO, max_frames=N_FRAMES):
 
@@ -304,29 +448,33 @@ for fi, frame in iter_frames(VIDEO, max_frames=N_FRAMES):
         frame = _field_grid_overlay(frame, src_pts_calib, dst_pts_calib, H)
         frame = _draw_calib_points(frame, src_pts_calib)
 
-    # --- Spieler zeichnen ---
+    # --- Spieler zeichnen + Board-Symbole sammeln ---
     counts = {TEAM_A: 0, TEAM_B: 0, -1: 0}
+    _board_symbols: list[PlayerSymbol] = []
+
     for player in tracked:
-        x1, y1, x2, y2 = (int(v) for v in player.bbox)
+        # Geglättete Bbox verwenden (reduziert Zittern)
+        smooth_bbox = _smooth_bbox(player.track_id, player.bbox)
+        x1, y1, x2, y2 = (int(v) for v in smooth_bbox)
 
-        # Team bestimmen
-        if assigner_fitted:
-            feat = extract_hsv_feature(frame, player.bbox)
-            team = assigner.get_team(player.track_id, feat) if feat is not None else -1
-        else:
-            team = -1
+        # Team per Majority-Vote über letzten N Frames (robust gegen Einzel-Fehler)
+        team = _vote_team(player.track_id, frame, player.bbox)
 
-        # Positions-Fallback: Spieler links → Team A, rechts → Team B
-        if team == -1 and H is not None:
+        # Feldkoordinaten via Homographie
+        bx_m, by_m = 20.0, 10.0  # Feldmitte als Fallback
+        if H is not None:
             cx_px = (x1 + x2) / 2.0
             cy_px = float(y2)
-            bx, _ = transform_point((cx_px, cy_px), H)
-            team = TEAM_A if bx < 20.0 else TEAM_B
+            bx_m, by_m = transform_point((cx_px, cy_px), H)
+
+        # Positions-Fallback für Team: Spieler links → Team A, rechts → Team B
+        if team == -1 and H is not None:
+            team = TEAM_A if bx_m < 20.0 else TEAM_B
         counts[team] = counts.get(team, 0) + 1
 
         color = TEAM_COLORS[team]
 
-        # Bounding-Box
+        # Bounding-Box im Video
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2, cv2.LINE_AA)
 
         # Label oben: ID + Klasse + Team
@@ -335,24 +483,77 @@ for fi, frame in iter_frames(VIDEO, max_frames=N_FRAMES):
 
         # Label unten: Feldkoordinaten (m)
         if H is not None:
-            cx = (x1 + x2) / 2.0
-            cy = float(y2)
-            bx, by = transform_point((cx, cy), H)
-            coord_label = f"{bx:.1f},{by:.1f}m"
+            coord_label = f"{bx_m:.1f},{by_m:.1f}m"
             _put_label(frame, coord_label, x1, y2 + 18, color, scale=0.45, thickness=1)
 
-    # Nicht getrackte, aber erkannte Spieler trotzdem sichtbar machen.
+        # Symbol fürs Board: nur wenn Koordinaten sinnvoll (nicht weit ausserhalb Feld)
+        _MARGIN = 5.0  # Meter Toleranz ausserhalb des Felds
+        if -_MARGIN <= bx_m <= 40 + _MARGIN and -_MARGIN <= by_m <= 20 + _MARGIN:
+            _board_symbols.append(PlayerSymbol(
+                track_id=player.track_id,
+                team=team,
+                class_name=player.class_name,
+                board_x=float(np.clip(bx_m, 0, 40)),
+                board_y=float(np.clip(by_m, 0, 20)),
+                label=str(player.track_id),
+            ))
+
+    # Nicht getrackte Detektionen: mit Team-Farbe anzeigen + aufs Board mappen
     tracked_bboxes = [tuple(float(v) for v in p.bbox) for p in tracked]
     det_only_count = 0
+    _det_board_id = -1  # Pseudo-ID für DET-only auf dem Board (negativ = ungetrackt)
+
+    def _center_near(bbox_a, bbox_b) -> bool:
+        """Prüft ob zwei Boxen annähernd dasselbe Zentrum haben (Kalman-Drift)."""
+        cx_a = (bbox_a[0] + bbox_a[2]) / 2;  cy_a = (bbox_a[1] + bbox_a[3]) / 2
+        cx_b = (bbox_b[0] + bbox_b[2]) / 2;  cy_b = (bbox_b[1] + bbox_b[3]) / 2
+        w = max(bbox_a[2]-bbox_a[0], bbox_b[2]-bbox_b[0])
+        h = max(bbox_a[3]-bbox_a[1], bbox_b[3]-bbox_b[1])
+        return abs(cx_a - cx_b) < w * 0.6 and abs(cy_a - cy_b) < h * 0.6
+
     for det in dets:
         if det.class_name not in ("player", "goalkeeper"):
             continue
-        if any(_iou_xyxy(det.bbox, tb) >= 0.5 for tb in tracked_bboxes):
+        # Überspringen wenn Tracker diese Detection bereits abdeckt (IoU oder Zentrum)
+        if any(_iou_xyxy(det.bbox, tb) >= 0.20 or _center_near(det.bbox, tb)
+               for tb in tracked_bboxes):
             continue
         det_only_count += 1
-        x1, y1, x2, y2 = (int(v) for v in det.bbox)
-        cv2.rectangle(frame, (x1, y1), (x2, y2), COLOR_DET_ONLY, 1, cv2.LINE_AA)
-        _put_label(frame, f"DET {det.confidence:.2f}", x1, y1 - 4, COLOR_DET_ONLY, scale=0.45, thickness=1)
+        x1d, y1d, x2d, y2d = (int(v) for v in det.bbox)
+
+        # Team-Farbe zuweisen wenn TeamAssigner bereit ist
+        if assigner_fitted:
+            feat = extract_hsv_feature(frame, det.bbox)
+            det_team = assigner.predict(feat) if feat is not None else -1
+            box_color = TEAM_COLORS.get(det_team, COLOR_DET_ONLY)
+            label = f"PLA T{TEAM_LABEL.get(det_team, '?')}"
+        else:
+            det_team = -1
+            box_color = COLOR_DET_ONLY
+            label = f"DET {det.confidence:.2f}"
+
+        cv2.rectangle(frame, (x1d, y1d), (x2d, y2d), box_color, 1, cv2.LINE_AA)
+        _put_label(frame, label, x1d, y1d - 4, box_color, scale=0.45, thickness=1)
+
+        # DET-only ebenfalls aufs Taktikboard projizieren
+        if H is not None:
+            cx_d = (x1d + x2d) / 2.0
+            cy_d = float(y2d)
+            bx_d, by_d = transform_point((cx_d, cy_d), H)
+            # Positions-Fallback für Team
+            if det_team == -1:
+                det_team = TEAM_A if bx_d < 20.0 else TEAM_B
+            # Nur im Feldbereich (mit Toleranz)
+            if -_MARGIN <= bx_d <= 40 + _MARGIN and -_MARGIN <= by_d <= 20 + _MARGIN:
+                _board_symbols.append(PlayerSymbol(
+                    track_id=_det_board_id,
+                    team=det_team,
+                    class_name=det.class_name,
+                    board_x=float(np.clip(bx_d, 0, 40)),
+                    board_y=float(np.clip(by_d, 0, 20)),
+                    label="",   # kein Label für DET-only (reduziert Unübersichtlichkeit)
+                ))
+                _det_board_id -= 1
 
     if fi < 5 or fi % 30 == 0:
         # region agent log
@@ -382,7 +583,27 @@ for fi, frame in iter_frames(VIDEO, max_frames=N_FRAMES):
         _put_label(frame, line, 12, y_pos,
                    color=(220, 220, 220), scale=0.6, thickness=1)
 
-    writer.write(frame)
+    # --- Taktikboard rendern und Side-by-Side zusammensetzen ---
+    # Video-Panel direkt in kombinierten Buffer kopieren (kein extra Alloc)
+    cv2.resize(frame, (_vid_w, _OUT_H), dst=_combined_buf[:, :_vid_w], interpolation=cv2.INTER_AREA)
+
+    if _board_renderer and _board_w > 0:
+        # Board nur laut Rate-Limiter neu rendern
+        if _board_update_due(fi):
+            _state = BoardState(players=_board_symbols, frame_index=fi)
+            _board_pil = _board_renderer.render_rgb(_state)
+            # PIL → BGR direkt in vorallokierten Panel-Puffer
+            np.copyto(_board_panel_buf, cv2.cvtColor(np.array(_board_pil), cv2.COLOR_RGB2BGR))
+            del _board_pil  # PIL-Bild sofort freigeben
+
+        # Board-Panel in rechte Hälfte des kombinierten Buffers
+        _combined_buf[:, _vid_w:] = _board_panel_buf
+        # Trennlinie
+        _combined_buf[:, _vid_w:_vid_w+2] = (60, 60, 60)
+    elif _board_w == 0:
+        pass  # nur Video-Panel
+
+    writer.write(_combined_buf)
     frame_count += 1
     if frame_count % 30 == 0:
         logger.info("  … Frame %d/%d", frame_count, N_FRAMES)

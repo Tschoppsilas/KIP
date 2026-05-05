@@ -18,17 +18,19 @@ class PlayerTracker:
 
     Args:
         track_activation_threshold: Minimum confidence to initialise a new
-            track (ByteTrack ``det_thresh``).
-        lost_track_buffer: Number of frames to keep a lost track alive.
+            track. Lower = more tracks started (default 0.15).
+        lost_track_buffer: Frames to keep a lost track alive before dropping it.
+            Higher = more stable IDs through occlusions (default 120).
         minimum_matching_threshold: IoU threshold for track-detection matching.
+            Lower = more forgiving, fewer ID switches (default 0.45).
         frame_rate: Expected video frame-rate (influences buffer timing).
     """
 
     def __init__(
         self,
-        track_activation_threshold: float = 0.25,
-        lost_track_buffer: int = 90,
-        minimum_matching_threshold: float = 0.7,
+        track_activation_threshold: float = 0.15,
+        lost_track_buffer: int = 120,
+        minimum_matching_threshold: float = 0.45,
         frame_rate: int = 30,
     ) -> None:
         self._tracker = sv.ByteTrack(
