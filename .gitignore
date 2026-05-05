@@ -12,8 +12,10 @@
 *.tiff
 *.tif
 
-# Roboflow-Exports (ZIPs >100MB sind auf GitHub nicht erlaubt)
+# Roboflow-Exports und Datensatz-ZIPs (>100MB nicht auf GitHub)
 finetune/*.zip
+colab_dataset.zip
+*.zip
 *.pdf
 *.docx
 .venv/
