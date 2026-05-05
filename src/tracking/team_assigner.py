@@ -85,6 +85,31 @@ class TeamAssigner:
     # Clustering
     # ------------------------------------------------------------------
 
+    def fit_from_references(
+        self,
+        ref_a: np.ndarray,
+        ref_b: np.ndarray,
+    ) -> None:
+        """Initialisiert die Team-Zuweisung direkt aus zwei User-gewählten Referenzfarben.
+
+        Statt blindem K-Means werden die HSV-Vektoren von zwei manuell
+        angeklickten Spielern (Team A und Team B) als feste Cluster-Zentren gesetzt.
+        Damit entfällt die Unsicherheit beim Mapping Cluster → Team vollständig.
+
+        Args:
+            ref_a: HSV-Vektor (shape (3,)) eines Team-A-Spielers.
+            ref_b: HSV-Vektor (shape (3,)) eines Team-B-Spielers.
+        """
+        self._centers = np.stack([ref_a, ref_b], axis=0).astype(np.float32)
+        self._n_clusters = 2
+        self._ref_cluster = -1
+        self._cluster_to_team = {0: TEAM_A, 1: TEAM_B}
+        self._fitted = True
+        logger.info(
+            "TeamAssigner per Referenz initialisiert:\n  Team A HSV: %s\n  Team B HSV: %s",
+            ref_a.tolist(), ref_b.tolist(),
+        )
+
     def fit(self, features: list[np.ndarray], n_clusters: int = 3) -> None:
         """Führt K-Means auf den gegebenen HSV-Merkmalsvektoren durch.
 
@@ -207,6 +232,7 @@ class TeamAssigner:
         data: dict = {
             "overrides": {str(k): v for k, v in self._overrides.items()},
             "centers": self._centers.tolist() if self._centers is not None else None,
+            "cluster_to_team": {str(k): v for k, v in self._cluster_to_team.items()},
         }
         path.write_text(json.dumps(data, indent=2))
         logger.info("TeamAssigner gespeichert: %s", path)
@@ -229,5 +255,9 @@ class TeamAssigner:
         centers = data.get("centers")
         if centers is not None:
             self._centers = np.array(centers, dtype=np.float32)
+            self._n_clusters = self._centers.shape[0]
             self._fitted = True
+        c2t = data.get("cluster_to_team")
+        if c2t:
+            self._cluster_to_team = {int(k): int(v) for k, v in c2t.items()}
         logger.info("TeamAssigner geladen: %s", path)

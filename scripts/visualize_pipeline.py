@@ -148,9 +148,24 @@ tracker = PlayerTracker(
     minimum_matching_threshold=0.30,       # IoU-Schwelle: sehr tolerant bei schnellen Bewegungen
 )
 
-# TeamAssigner – wird nach den ersten 30 Frames initialisiert
+# TeamAssigner – per User-Referenz (team_colors.json) oder K-Means als Fallback
 assigner = TeamAssigner()
 assigner_fitted = False
+
+_TEAM_COLORS_FILE = Path("team_colors.json")
+if _TEAM_COLORS_FILE.exists():
+    try:
+        _tc = json.loads(_TEAM_COLORS_FILE.read_text())
+        _ref_a = np.array(_tc["team_a_hsv"], dtype=np.float32)
+        _ref_b = np.array(_tc["team_b_hsv"], dtype=np.float32)
+        assigner.fit_from_references(_ref_a, _ref_b)
+        assigner_fitted = True
+        logger.info("Team-Farben aus '%s' geladen ✓  (manuell kalibriert)", _TEAM_COLORS_FILE)
+    except Exception as exc:
+        logger.warning("team_colors.json konnte nicht geladen werden: %s – nutze K-Means.", exc)
+else:
+    logger.info("Kein team_colors.json gefunden – K-Means wird nach %d Frames verwendet.",
+                50)
 
 # ---------------------------------------------------------------------------
 # Split-View: Video links | Taktikboard rechts
@@ -305,42 +320,38 @@ def _iou_xyxy(a: tuple[float, float, float, float], b: tuple[float, float, float
 
 
 # ---------------------------------------------------------------------------
-# Erster Durchlauf: Features für TeamAssigner sammeln (stille Phase)
+# Erster Durchlauf: Features für TeamAssigner sammeln (nur wenn kein team_colors.json)
 # ---------------------------------------------------------------------------
-logger.info("Sammle Farbmerkmale für Teamzuordnung (erste 50 Frames) …")
-fit_features = []
-fit_frames_used = 0
-for fi, frame in iter_frames(VIDEO, max_frames=50):
-    dets = [d for d in detector.detect(frame, frame_index=fi)
-            if d.class_name != "referee"]
-    tracked = tracker.update(dets, frame_index=fi)
-
-    # Features aus getrackten Spielern UND ungetrackten Detektionen sammeln
-    used_bboxes = [p.bbox for p in tracked]
-    all_player_dets = [d for d in dets if d.class_name in ("player", "goalkeeper")]
-    for det in all_player_dets:
-        # Nicht doppelt zählen wenn schon via Track erfasst
-        if not any(_iou_xyxy(det.bbox, tb) >= 0.4 for tb in used_bboxes):
-            feat = extract_hsv_feature(frame, det.bbox)
+if not assigner_fitted:
+    logger.info("Sammle Farbmerkmale für Teamzuordnung (erste 50 Frames) …")
+    fit_features = []
+    for fi, frame in iter_frames(VIDEO, max_frames=50):
+        dets = [d for d in detector.detect(frame, frame_index=fi)
+                if d.class_name != "referee"]
+        tracked = tracker.update(dets, frame_index=fi)
+        used_bboxes = [p.bbox for p in tracked]
+        all_player_dets = [d for d in dets if d.class_name in ("player", "goalkeeper")]
+        for det in all_player_dets:
+            if not any(_iou_xyxy(det.bbox, tb) >= 0.4 for tb in used_bboxes):
+                feat = extract_hsv_feature(frame, det.bbox)
+                if feat is not None:
+                    fit_features.append(feat)
+        for player in tracked:
+            feat = extract_hsv_feature(frame, player.bbox)
             if feat is not None:
                 fit_features.append(feat)
-    for player in tracked:
-        feat = extract_hsv_feature(frame, player.bbox)
-        if feat is not None:
-            fit_features.append(feat)
-    fit_frames_used = fi + 1
 
-tracker.reset()   # Tracker für den Haupt-Durchlauf zurücksetzen
+    tracker.reset()
 
-if len(fit_features) >= 2:
-    # n_clusters=2: nur zwei Teams, kein separater Schiri-Cluster.
-    # Mit k=3 landen bei ähnlichen Trikotsfarben viele Spieler im "UNKNOWN"-Bucket.
-    assigner.fit(fit_features, n_clusters=2)
-    assigner_fitted = True
-    logger.info("K-Means trainiert auf %d Feature-Vektoren.", len(fit_features))
+    if len(fit_features) >= 2:
+        assigner.fit(fit_features, n_clusters=2)
+        assigner_fitted = True
+        logger.info("K-Means trainiert auf %d Feature-Vektoren.", len(fit_features))
+    else:
+        logger.warning("Zu wenig Features für K-Means (%d) – Teams werden nicht eingefärbt.",
+                       len(fit_features))
 else:
-    logger.warning("Zu wenig Features für K-Means (%d) – Teams werden nicht eingefärbt.",
-                   len(fit_features))
+    logger.info("Überspringe Feature-Collection (team_colors.json vorhanden).")
 
 # ---------------------------------------------------------------------------
 # Haupt-Durchlauf: annotiertes Video erzeugen
@@ -362,10 +373,45 @@ _BOARD_UPDATE_HZ = 8      # Max. Board-Aktualisierungen pro Sekunde
 _bbox_smooth:  dict[int, list[float]]       = {}   # track_id → geglättete Bbox
 _team_votes:   dict[int, deque]             = {}   # track_id → letzte N Team-Votes
 _team_stable:  dict[int, int]               = {}   # track_id → stabiles Team (Majority)
-_board_state:  dict[int, dict]              = {}   # track_id → letzter Board-Zustand
 _last_board_fi: int                         = -999 # letztes Frame mit Board-Update
 
 _board_interval = max(1, int(info.fps / _BOARD_UPDATE_HZ))  # z.B. 3 bei 25fps
+
+# Distanz-Tracker für DET-only: stabile Pseudo-IDs über Frames
+# Spieler können max. ~1m pro Frame laufen (bei 30fps, 10m/s Sprint)
+# Wir erlauben 4m Toleranz als Puffer für verpasste Frames
+_DET_MAX_DIST_M = 4.0        # Meter im Feldkoordinatensystem
+_DET_MAX_LOST   = 8          # Frames ohne Sichtung → ID wird verworfen
+_det_id_counter: int         = 10_000  # Pseudo-IDs ab 10000 (klar von ByteTrack-IDs getrennt)
+_det_tracks: dict[int, dict] = {}
+# Format: {det_id: {"bx": float, "by": float, "team": int, "lost": int}}
+
+def _match_det_to_track(bx: float, by: float) -> int:
+    """Findet die nächste vorhandene DET-Track-ID oder erstellt eine neue."""
+    global _det_id_counter
+    best_id, best_dist = None, float("inf")
+    for did, info_d in _det_tracks.items():
+        dist = ((bx - info_d["bx"]) ** 2 + (by - info_d["by"]) ** 2) ** 0.5
+        if dist < best_dist:
+            best_dist, best_id = dist, did
+    if best_id is not None and best_dist <= _DET_MAX_DIST_M:
+        return best_id
+    # Neue ID vergeben
+    _det_id_counter += 1
+    return _det_id_counter
+
+def _update_det_tracks(matched: dict[int, tuple[float, float, int]]) -> None:
+    """Aktualisiert den DET-Track-State; wirft alte Tracks raus."""
+    seen_ids = set(matched.keys())
+    # Aktive Tracks aktualisieren
+    for did, (bx, by, team) in matched.items():
+        _det_tracks[did] = {"bx": bx, "by": by, "team": team, "lost": 0}
+    # Nicht-gesehene Tracks altern lassen
+    for did in list(_det_tracks.keys()):
+        if did not in seen_ids:
+            _det_tracks[did]["lost"] += 1
+            if _det_tracks[did]["lost"] > _DET_MAX_LOST:
+                del _det_tracks[did]
 
 
 def _vote_team(track_id: int, frame_img, bbox) -> int:
@@ -498,30 +544,29 @@ for fi, frame in iter_frames(VIDEO, max_frames=N_FRAMES):
                 label=str(player.track_id),
             ))
 
-    # Nicht getrackte Detektionen: mit Team-Farbe anzeigen + aufs Board mappen
+    # Nicht getrackte Detektionen: mit stabilem Distanz-Tracker + Board-Mapping
     tracked_bboxes = [tuple(float(v) for v in p.bbox) for p in tracked]
     det_only_count = 0
-    _det_board_id = -1  # Pseudo-ID für DET-only auf dem Board (negativ = ungetrackt)
 
     def _center_near(bbox_a, bbox_b) -> bool:
-        """Prüft ob zwei Boxen annähernd dasselbe Zentrum haben (Kalman-Drift)."""
         cx_a = (bbox_a[0] + bbox_a[2]) / 2;  cy_a = (bbox_a[1] + bbox_a[3]) / 2
         cx_b = (bbox_b[0] + bbox_b[2]) / 2;  cy_b = (bbox_b[1] + bbox_b[3]) / 2
         w = max(bbox_a[2]-bbox_a[0], bbox_b[2]-bbox_b[0])
         h = max(bbox_a[3]-bbox_a[1], bbox_b[3]-bbox_b[1])
         return abs(cx_a - cx_b) < w * 0.6 and abs(cy_a - cy_b) < h * 0.6
 
+    _det_matched_this_frame: dict[int, tuple[float, float, int]] = {}
+
     for det in dets:
         if det.class_name not in ("player", "goalkeeper"):
             continue
-        # Überspringen wenn Tracker diese Detection bereits abdeckt (IoU oder Zentrum)
         if any(_iou_xyxy(det.bbox, tb) >= 0.20 or _center_near(det.bbox, tb)
                for tb in tracked_bboxes):
             continue
         det_only_count += 1
         x1d, y1d, x2d, y2d = (int(v) for v in det.bbox)
 
-        # Team-Farbe zuweisen wenn TeamAssigner bereit ist
+        # Team bestimmen
         if assigner_fitted:
             feat = extract_hsv_feature(frame, det.bbox)
             det_team = assigner.predict(feat) if feat is not None else -1
@@ -535,25 +580,38 @@ for fi, frame in iter_frames(VIDEO, max_frames=N_FRAMES):
         cv2.rectangle(frame, (x1d, y1d), (x2d, y2d), box_color, 1, cv2.LINE_AA)
         _put_label(frame, label, x1d, y1d - 4, box_color, scale=0.45, thickness=1)
 
-        # DET-only ebenfalls aufs Taktikboard projizieren
+        # Projektion + Distanz-Tracker
         if H is not None:
             cx_d = (x1d + x2d) / 2.0
             cy_d = float(y2d)
             bx_d, by_d = transform_point((cx_d, cy_d), H)
-            # Positions-Fallback für Team
             if det_team == -1:
                 det_team = TEAM_A if bx_d < 20.0 else TEAM_B
-            # Nur im Feldbereich (mit Toleranz)
             if -_MARGIN <= bx_d <= 40 + _MARGIN and -_MARGIN <= by_d <= 20 + _MARGIN:
+                bx_c = float(np.clip(bx_d, 0, 40))
+                by_c = float(np.clip(by_d, 0, 20))
+
+                # Stabilen Pseudo-ID per Distanz-Matching finden
+                det_id = _match_det_to_track(bx_c, by_c)
+                _det_matched_this_frame[det_id] = (bx_c, by_c, det_team)
+
+                # Geglättete Position aus vorherigem Frame verwenden (falls vorhanden)
+                if det_id in _det_tracks:
+                    prev = _det_tracks[det_id]
+                    bx_c = _SMOOTH_ALPHA * bx_c + (1 - _SMOOTH_ALPHA) * prev["bx"]
+                    by_c = _SMOOTH_ALPHA * by_c + (1 - _SMOOTH_ALPHA) * prev["by"]
+
                 _board_symbols.append(PlayerSymbol(
-                    track_id=_det_board_id,
+                    track_id=det_id,   # stabiler Pseudo-ID (>=10000)
                     team=det_team,
                     class_name=det.class_name,
-                    board_x=float(np.clip(bx_d, 0, 40)),
-                    board_y=float(np.clip(by_d, 0, 20)),
-                    label="",   # kein Label für DET-only (reduziert Unübersichtlichkeit)
+                    board_x=bx_c,
+                    board_y=by_c,
+                    label="",          # kein Label → übersichtlicher
                 ))
-                _det_board_id -= 1
+
+    # DET-Track-State für nächstes Frame aktualisieren
+    _update_det_tracks(_det_matched_this_frame)
 
     if fi < 5 or fi % 30 == 0:
         # region agent log
