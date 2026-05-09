@@ -1,0 +1,27 @@
+# UniVision2Board – Kernabhängigkeiten
+# MVP-Fokus: Spieler-Erkennung, Tracking, Teamzuordnung, Taktikboard-GUI
+
+# Computer Vision & Video
+opencv-python>=4.9.0
+numpy>=1.26.0
+
+# Objekterkennung (YOLOv11)
+ultralytics>=8.3.0
+
+# Tracking
+lapx>=0.5.5
+
+# GUI
+PyQt5>=5.15.0
+
+# Bild- und Taktikboard-Export
+Pillow>=10.0.0
+reportlab>=4.0.0
+
+# Daten & Clustering
+scikit-learn>=1.4.0
+
+# Tests
+pytest>=8.0.0
+
+# Logging (stdlib, kein Extra-Package nötig)
