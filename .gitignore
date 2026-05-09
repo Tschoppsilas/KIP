@@ -39,3 +39,4 @@ finetune/roboflow_export/
 
 # --- Model weights (download/train locally) ---
 *.pt
+*.zip
