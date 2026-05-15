@@ -19,6 +19,9 @@ Details zum Scope: siehe [SCOPE.md](SCOPE.md).
 - **Python** 3.10 oder neuer.
 - **GPU** ist optional; Ultralytics/YOLO nutzt CUDA, falls vorhanden.
 - Unter **Linux** kann die Qt-/Wayland-Umgebung Zusatzvariablen brauchen (siehe Troubleshooting).
+- **Git LFS** ([git-lfs.com](https://git-lfs.com)): nach dem Klonen des Repos im Wurzelverzeichnis `git lfs install` und `git lfs pull`, damit `../finetune/runs/train/weights/best.pt` vollständig geladen wird (Dateigröße grob **> 50 MB** prüfen).
+- **Taktikboard:** `../Taktikboard/Taktikboard.png` muss existieren (liegt im Repo, wenn die Abgabe-Konfiguration genutzt wird).
+- **Video:** MP4 unter `../Videos/` — z. B. `Abgabe_Demo.mp4` falls mitgeliefert, sonst eigenes Spielvideo dort ablegen.
 
 ## Installation
 
@@ -38,7 +41,8 @@ Das Standard-YOLO-Gewicht wird relativ zu diesem Ordner erwartet unter:
 ## Erster Start
 
 ```bash
-python run_pipeline.py ../Videos/<dein_video>.mp4
+python run_pipeline.py ../Videos/Abgabe_Demo.mp4
+# oder: python run_pipeline.py ../Videos/<dein_video>.mp4
 ```
 
 Ablauf (mit GUI): Kalibrierungsdialog (Pflicht) → kurzes Team-Warmup → Hauptfenster mit Video und Board während die Verarbeitung läuft.

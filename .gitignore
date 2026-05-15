@@ -58,3 +58,18 @@ finetune/_raw/
 finetune/annotation_frames/
 finetune/annotation_frames_v2/
 finetune/roboflow_export/
+
+# =========================
+# PROJEKT 2 — Abgabe (Ausnahmen; spätere Zeilen überschreiben breitere Ignores)
+# =========================
+# Taktikboard-Hintergrund (klein)
+!Projekt2/Taktikboard/Taktikboard.png
+
+# Trainiertes Hauptgewicht (Git LFS — nur diese Datei aus runs/, nicht den ganzen Ordner adden)
+!Projekt2/finetune/runs/
+!Projekt2/finetune/runs/train/
+!Projekt2/finetune/runs/train/weights/
+!Projekt2/finetune/runs/train/weights/best.pt
+
+# Optional: ein kurzes Demo-Video (Datei lokal nach diesem Namen ablegen; sonst eigenes MP4 nutzen)
+!Projekt2/Videos/Abgabe_Demo.mp4
