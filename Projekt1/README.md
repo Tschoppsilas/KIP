@@ -1,4 +1,4 @@
-# UniVision2Board
+# UniVision2Board (Alt und funktioniert nicht mehr aufgrund von Verschiebungen von Ordner in Projekt2)
 
 Automatische Post-Game-Analyse von Unihockey-Videos: Spieler werden erkannt,
 getrackt und live auf ein digitales Taktikboard übertragen.
