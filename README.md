@@ -1,6 +1,6 @@
 # KIP — UniVision2Board
 
-Übergeordnetes Repository für die Arbeit am Projekt **UniVision2Board**: Videomaterial aus dem Unihockey soll für die **Nachspielfeld-Analyse** auf ein digitales Taktikboard übertragen und dort weiterbearbeitet werden können.
+Übergeordnetes Repository für die Arbeit am Projekt **UniVision2Board**: Videomaterial aus einem Unihockeyspiel soll für die **Video-Analyse** direkt auf ein digitales Taktikboard übertragen und dort weiterbearbeitet werden können.
 
 ## Zwei Projektstände
 
