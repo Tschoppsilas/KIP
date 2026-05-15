@@ -1,6 +1,11 @@
+# =========================
+# VIDEOS / MEDIA
+# =========================
 *.mp4
 
-# Bilder (lokal / große Binärdateien — nicht ins Repo)
+# =========================
+# IMAGES
+# =========================
 *.png
 *.jpg
 *.jpeg
@@ -12,29 +17,44 @@
 *.tiff
 *.tif
 
-# Roboflow-Exports und Datensatz-ZIPs (>100MB nicht auf GitHub)
+# =========================
+# MODELS (IMPORTANT)
+# =========================
+*.pt
+
+# =========================
+# ZIP / DATA EXPORTS
+# =========================
+*.zip
 finetune/*.zip
 colab_dataset.zip
-*.zip
 *.pdf
 *.docx
+
+# =========================
+# ENVIRONMENT / CACHE
+# =========================
 .venv/
 __pycache__/
 *.pyc
 
-# --- Outputs / Logs ---
+# =========================
+# LOGS
+# =========================
 pipeline_log.txt
 finetune/train_log*.txt
 *.log
 
-# --- Training artifacts (generated) ---
+# =========================
+# TRAINING OUTPUTS (YOLO runs)
+# =========================
 finetune/runs/
 runs/
 
-# --- Raw/Exported datasets (keep local, not in git) ---
+# =========================
+# DATASETS (LOCAL ONLY)
+# =========================
 finetune/_raw/
 finetune/annotation_frames/
 finetune/annotation_frames_v2/
 finetune/roboflow_export/
-
-# --- Model weights (download/train locally) ---
