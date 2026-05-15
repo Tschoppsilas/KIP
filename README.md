@@ -21,3 +21,23 @@ Daraufhin wurde eine **vereinfachte, klarere Neuaufstellung** angelegt: Fokus au
 | Älterer Stand (Referenz) | [Projekt1/README.md](Projekt1/README.md) |
 
 Videos, Taktikboard-Grafiken und Modellgewichte werden je nach Setup **lokal** oder über eigene Ablage verwaltet (siehe `.gitignore` und die jeweiligen READMEs).
+
+
+## Setup
+
+Dieses Projekt verwendet Git LFS für grosse Dateien (Modelle).
+
+### Installation
+https://git-lfs.com
+
+Nach der Installation:
+
+```bash
+git lfs install
+```
+### Repository klonen
+```bash
+git clone <repo-url>
+cd <repo>
+git lfs pull
+```

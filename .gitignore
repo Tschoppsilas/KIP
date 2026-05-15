@@ -38,4 +38,3 @@ finetune/annotation_frames_v2/
 finetune/roboflow_export/
 
 # --- Model weights (download/train locally) ---
-*.zip
